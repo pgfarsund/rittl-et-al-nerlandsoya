@@ -1,0 +1,317 @@
+---
+title: "cleaning_pitfall_malaise_and_plant_data"
+author: "pgfarsund"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+load library
+
+```{r}
+library(here)
+library(tidyverse)
+library(janitor)
+library(phyloseq)
+```
+
+
+cleaning plants
+
+```{r}
+
+plants <- data.frame(read.csv("data/plants/data_veg.csv", sep = ";")) %>% 
+  t() %>% 
+  data.frame() %>% 
+  row_to_names(1) %>% 
+  clean_names() %>% 
+  filter(naturtype != "Semi-naturlig eng") %>% 
+  rename("phase" = "fase") %>% 
+  mutate(phase = recode(phase, 
+                       "PF" = "P", 
+                       "BF" = "B", 
+                       "MF" = "M"))
+
+sort(colnames(plants))
+
+mat <- plants %>% 
+  select(37:128) %>% 
+  mutate_at(vars(1:92), as.numeric) %>% 
+  replace(is.na(.), 0) %>% 
+  # filter out unwanted "taxa"
+  select(-c(lyngarter_uten_rosslyng,
+            andre_forvedete_arter,
+            urter,
+            graminider,
+            lav,
+            moser, 
+            svart_liten_sopp_foto)) %>% 
+  # replace norwegian names with scientific names
+  dplyr::rename("sigdmose_sp" = "dicranum_sp_sigdmose_sp") %>% 
+  dplyr::rename(
+    "Cerastium_fontanum" = "arve", 
+    "Euphrasia_officinalis" = "augnetroyst", 
+    "Blechnum_spicant" =  "bjonnkam", 
+    "Trichophorum_cespitosum" = "bjonnskjegg", 
+    "Polytrichum_sp" = "bjornemose", 
+    "Vaccinium_myrtillus" = "blabaer", 
+    "Campanula_rotundifolia"  = "blaklokke", 
+    "Succisa_pratensis" = "blaknapp", 
+    "Prunella_vulgaris" = "blakoll", 
+    "Carex_flacca" = "blastarr", 
+    "Molinia_caerulea" = "blatopp", 
+    "Vaccinium_uliginosum" = "blokkebaer", 
+    "Carex_pilulifera" = "bratestarr",
+    "Juniperus_sp" = "einer",
+    "Viola_canina" = "engfiol",
+    "Luzula_multiflora" = "engfrytle",
+    "Geum_rivale" =  "enghumleblom",
+    "Rhytidiadelphus_squarrosus" =  "engkransmose",
+    "Agrostis_capillaris" =  "engkvein",
+    "Holcus_lanatus" =  "englodnegras",
+    "Poa_pratensis" =  "engrapp",
+    "Ranunculus_acris" =  "engsoleie",
+    "Rumex_acetosa" =  "engsyre",
+    "Hylocomium_splendens" =  "etasjemose",
+    "Nardus_stricta" =  "finnskjegg",
+    "Viola_sp" =  "fiol_sp",
+    "Hypericum_maculatum" =  "firkantperikum",
+    "Alchemilla_alpina" =  "fjellmarikape", 
+    "Dactylorhiza_maculata" =  "flekkmarihand",
+    "Luzula_sp" =  "frytle_sp",
+    "Vicia_cracca" =  "fuglevikke",
+    "Pleurozium_schreberi" =  "furumose",
+    "Oxalis_acetosella" =  "gauksyre",
+    "Festuca_vivipara" =  "geitsvingel",
+    "Poaceae" =  "gras_sp",
+    "Anthoxanthum_odoratum" =  "gulaks",
+    "Saxifraga_aizoides" =  "gulsildre",
+    "Luzula_pilosa" =  "harfrytle",
+    "Polygala_serpyllifolia" =  "heiblafjor",
+    "Hypnum_jutlandicum" =  "heiflette",
+    "Carex_binervis" =  "heistarr",
+    "Parnassia_palustris" =  "jablom",
+    "Erica_tetralix" =  "klokkelyng",
+    "Carex_panicea" =  "kornstarr",
+    "Holcus_mollis" =  "krattlodnegras",
+    "Empetrum_nigrum" =  "krekling",
+    "Plagiomnium_undulatum" =  "krusfagermose",
+    "Cirsium_heterophyllum" =  "kvitbladtistel",
+    "Trifolium_repens" =  "kvitklover",
+    "Anemone_nemorosa" =  "kvitveis",
+    "Rhytidiadelphus_loreus" =  "kystkransmose",
+    "Veronica_officinalis" =  "legeveronika",
+    "Marchantiophyta" =  "levermose_sp",
+    "Carex pulicarus" =  "loppestarr",
+    "Taraxacum_sp" =  "lovetann",
+    "Cladonia_arbuscula" =  "lys_reinlav",
+    "Maianthemum_bifolium" =  "maiblom",
+    "Alchemilla_sp" =  "marikape",
+    "Arctostaphylos_uva-ursi" =  "melbaer",
+    "Filipendula_ulmaria" =  "mjodurt",  
+    "unknown_bryophyte" =  "mosepose",
+    "Cirsium_palustre" =  "myrtistel",
+    "Pseudoscleropodium_purum" =  "narremose",
+    "Hypericum_sp" =  "perikum_sp", 
+    "Festuca_rubra" =  "rodsvingel",
+    "Calluna_vulgaris" =  "rosslyng",
+    "Achillea_millefolium" =  "ryllik",
+    "Arctous_alpina" =  "rypebaer", 
+    "Festuca_ovina" =  "sauesvingel",
+    "Dicranum_1" =  "sigdmose",
+    "Dicranum_2" =  "sigdmose_sp",
+    "Lysimachia_europaea" =  "skogstjerne",   
+    "Chamaepericlymenum_suecicum" =  "skrubbaer",
+    "Carex_nigra_nigra" =  "slattestarr",
+    "Avenella_flexuosa" =  "smyle",
+    "Deschampsia_cespitosa_cespitosa" =  "solvbunke",
+    "Carex_sp" =  "starr_sp",
+    "Luzula_sylvatica" =  "storfrytle",
+    "Hylocomiadelphus_triquetrus" =  "storkransmose",
+    "Lycopodium_annotinum" =  "stri_krakefot",
+    "Festuca_sp" =  "svingel_sp",
+    "Rumex_sp" =  "syre_sp",
+    "Potentilla_erecta" =  "tepperot",
+    "Lotus_corniculatus" =  "tiriltunge",
+    "Vaccinium_vitis-ideae" =  "tyttebaer"
+  ) %>% 
+  mutate(Dicranum = Dicranum_1 + Dicranum_2) %>% 
+  select(-Dicranum_1, -Dicranum_2)
+
+mat <- as.matrix(mat)
+
+sam <- plants %>% 
+  select(phase, blokk, plott)
+
+ps <- phyloseq(otu_table(mat, taxa_are_rows = F), 
+               sample_data(sam))
+
+saveRDS(ps, "data/plants/heathland-fire-plants.RDS")
+
+```
+
+
+cleaning plants functional groups
+
+```{r}
+plants <- data.frame(read_xlsx("~/Downloads/BG2.0_data_vegetasjon_lgv.xlsx", 
+                               sheet = 2)) %>% 
+  slice(-c(6:42)) %>% 
+  t() %>% 
+  data.frame() %>% 
+  row_to_names(1) %>% 
+  clean_names() %>% 
+  filter(lyngheifase != "NA") %>% 
+  mutate(across(busker_kratt:na_8, as.numeric))
+
+
+  mutate(shrubs = c(einer + bjonnkam))
+  
+  filter(naturtype != "Semi-naturlig eng") %>% 
+  rename("phase" = "fase") %>% 
+  mutate(phase = recode(phase, 
+                        "PF" = "P", 
+                        "BF" = "B", 
+                        "MF" = "M"))
+```
+
+
+cleaning malaise traps
+
+```{r}
+insects23 <- read_xlsx("~/Downloads/DNA barcoding insect malisetraps Nerlandsøya 2022-2023.xlsx", sheet = "2023")
+
+# these datasets are pretty messy. they look like the result of phyloseq::psmelt()
+# reformat the dataframes to phyloseq objects.
+
+# we will only use data from 2023. 
+
+## 2023
+insects23 <- read_xlsx("~/Downloads/DNA barcoding insect malisetraps Nerlandsøya 2022-2023.xlsx", sheet = "2023")
+
+insects23 %>%
+  arrange(-number_of_sequences) %>% 
+  filter(ID_confidence == "HIGH" | 
+           ID_confidence == "MODERATE") %>% 
+  select(final_phylum,
+    final_class,
+    final_order, 
+    final_family, 
+    final_genus, 
+    final_species, 
+    number_of_sequences) %>% 
+  plyr::rename(c("final_phylum" = "phylum", 
+         "final_class" = "class", 
+         "final_order" = "order", 
+         "final_family" = "family", 
+         "final_genus" = "genus", 
+         "final_species" = "species", 
+         "number_of_sequences" = "abundance")) %>% 
+  mutate(taxa_sum = sum(abundance), 
+         .by = c(phylum, class, order, family, genus, species)) %>%
+  group_by(phylum, class, order, family, genus, species, taxa_sum) %>%
+  summarise() %>% 
+  arrange(-taxa_sum) %>% 
+  mutate(rownms = species) %>% 
+  column_to_rownames("rownms") %>% 
+  select(-taxa_sum) -> tax23; head(tax23)
+
+# otu_table:
+insects23 %>%
+  mutate(sampling_name = paste0(gsub("fase", "", insects23$Fase), "_", "02", "_", insects23$Blokk, "_", "2023"), .before = 1) %>%
+  arrange(-number_of_sequences) %>% 
+  select(sampling_name, 
+         final_phylum,
+         final_class,
+         final_order, 
+         final_family, 
+         final_genus, 
+         final_species, 
+         number_of_sequences) %>% 
+  plyr::rename(c("sampling_name" = "sample", 
+                 "final_phylum" = "phylum", 
+                 "final_class" = "class", 
+                 "final_order" = "order", 
+                 "final_family" = "family", 
+                 "final_genus" = "genus", 
+                 "final_species" = "species", 
+                 "number_of_sequences" = "abundance")) %>% 
+  mutate(taxa_sum = sum(abundance), 
+         .by = c(sample, 
+                 phylum, class, order, family, genus, species)) %>%
+  group_by(sample, 
+           phylum, class, order, family, genus, species, taxa_sum) %>%
+  summarise() %>% 
+  arrange(-taxa_sum) %>%
+  ungroup() %>%
+  select(sample, species, taxa_sum) %>% 
+  pivot_wider(names_from = sample,
+              values_from = taxa_sum) %>% 
+  replace(is.na(.), 0) %>% 
+  column_to_rownames("species") -> otu23; head(otu23)
+#
+
+insects23 %>% 
+  plyr::rename(c("Fase" = "phase", 
+         "number_of_sequences" = "read_abundance")) %>%
+  mutate(sample = paste0(sub("fase", "", phase), "_02_", Blokk, "_", "2023"), 
+         phase = sub("Byggfase", "B", phase),
+         phase = sub("Modenfase", "M", phase),
+         phase = sub("Pionerfase", "P", phase), 
+         comment_at_check_in = NA, 
+         year = "2023", 
+         period = "2", 
+         trap_short_name = "MF1") %>% 
+  summarise(read_abundance = sum(read_abundance), 
+            .by = c(phase, sample, period, trap_short_name, year, comment_at_check_in)) %>% 
+  select(phase, 
+         sample, 
+         period, 
+         read_abundance, 
+         trap_short_name,
+         year, 
+         comment_at_check_in) %>% 
+  group_by_all() %>%
+  reframe() -> sam23; sam23
+
+#
+tax <- tax_table(as.matrix(tax23)); head(taxa_names(tax))
+otu <- otu_table(otu23, taxa_are_rows = T); head(taxa_names(otu)); sample_names(otu)
+sam <- sample_data(sam23); sample_names(sam) <- sam$sample; sample_names(sam)
+
+ps23 <- phyloseq(tax, otu, sam); ps23
+
+saveRDS(ps23, here("data/insects/heathland-fire-insects.RDS"))
+```
+
+
+cleaning pitfall traps
+
+```{r}
+walk <- readxl::read_excel(here("data/walking_arthropods/walking_arthropods_2023.xlsx")) %>% 
+  rename("phase" = "Fase") %>% 
+  select(-c(
+    Blokk, 
+    Cup, 
+    Periode
+  ))
+
+sam <- walk %>% 
+  select(phase) %>% 
+  mutate(phase = sub("Pioner", "P", phase), 
+         phase = sub("Bygg", "B", phase), 
+         phase = sub("Moden", "M", phase)) %>% 
+  mutate(dummy = "dummy")
+
+sam <- sample_data(sam)
+
+otu <- walk %>% 
+  select(-phase) %>% 
+  replace(is.na(.), 0)
+
+otu <- otu_table(otu, taxa_are_rows = F)  
+
+walk <- phyloseq(otu, sam); walk
+
+saveRDS(walk, here("data/walking_arthropods/heathland-fire-walking-arthropods.RDS"))
+```
+
