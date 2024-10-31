@@ -1,0 +1,724 @@
+---
+title: "heathland_fire_beta_diversity"
+author: "pgfarsund"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+this script performs calculations, statistical testing, and plotting for 
+beta diversity analysis included in Rittl et al. 2024. 
+
+```{r}
+library(here)
+library(tidyverse)
+library(phyloseq)
+library(ggpubr)
+library(janitor)
+library(emmeans)
+library(BiodiversityR)
+library(pairwiseAdonis)
+library(MicEco)
+
+set.seed(123)
+```
+
+
+plants
+
+```{r}
+# load phyloseq object:
+plants <- readRDS(here("data/plants/heathland-fire-plants.RDS"))
+plants <- prune_taxa(taxa_sums(plants) > 0, plants)
+plants
+
+plants <- transform_sample_counts(plants, function(x) x / sum(x)) # compute relative abundances
+
+dis <- vegdist(x = plants@otu_table, method = "bray") # compute dissimilarity index
+
+ordmod <- cmdscale(
+  d = dis,
+  k = 2,
+  eig = TRUE,
+  add = TRUE
+) # perform MDS/PCoA
+
+plot1 <- ordiplot(ordmod, choices = c(1, 2))
+
+sites.long1 <- sites.long(plot1, env.data = plants@sam_data)
+
+ev <- ordmod$eig # get eigenvalues
+percent_explained <- 100 * ev / sum(ev) # store eigenvalues
+percent_explained[1:2] # gives the percent explained for the first two axis
+
+plot1 <- ordiplot(ordmod, choices = c(1, 2))
+
+ggplot() +
+  theme_classic() +
+  geom_vline(xintercept = c(0), color = "grey10", linetype = 2) +
+  geom_hline(yintercept = c(0), color = "grey10", linetype = 2) +
+  xlab(paste0("PCoA axis 1 (", round(percent_explained[1], digits = 1), " %)")) +
+  ylab(paste0("PCoA axis 2 (", round(percent_explained[2], digits = 1), " %)")) +
+  scale_x_continuous(sec.axis = dup_axis(labels = NULL, name = NULL)) +
+  scale_y_continuous(sec.axis = dup_axis(labels = NULL, name = NULL)) +
+  geom_point(
+    data = sites.long1,
+    aes(
+      x = axis1, y = axis2,
+      colour = factor(plants@sam_data$phase, levels = c("P", "B", "M")),
+      fill = factor(plants@sam_data$phase, levels = c("P", "B", "M"))
+    ),
+    pch = 21, size = 4, alpha = 0.8
+  ) +
+  geom_point(
+    data = centroids.long(sites.long1,
+      FUN = mean,
+      grouping = factor(plants@sam_data$phase, levels = c("P", "B", "M")),
+      centroids.only = TRUE
+    ),
+    aes(x = axis1c, y = axis2c, colour = Centroid, fill = Centroid),
+    pch = 24, size = 4, alpha = 1
+  ) +
+  scale_color_manual(values = rep("black", times = 12)) +
+  scale_shape_manual(values = c(21, 22)) +
+  scale_fill_manual(values = c("#C7E9C0", "#41AB5D", "#00441B")) +
+  labs(title = "Plants") +
+  theme(
+    legend.title = element_blank(),
+    legend.position = "bottom"
+  ) -> plabet
+plabet
+
+# perform permanova
+adonis2(dis ~ phase,
+  data = data.frame(plants@sam_data),
+  permutations = 9999,
+  method = "bray"
+)
+
+# perform pairwise permanova
+pairwise.adonis2(dis ~ phase,
+  data = data.frame(plants@sam_data),
+  nperm = 9999,
+  method = "bray"
+)
+
+# make venn diagrams with shared and unique taxa between groups
+library(MicEco)
+plants_species_venn <- ps_venn(plants, plot = F,
+  group = "phase",
+  weight = F,
+  quantities = list(type = c("counts", "percent"), font = 1, cex = 1),
+  labels = list(font = 2, cex = 1.5),
+  main = "Plants",
+  fill = list(
+    fill = c("#41AB5D", "#00441B", "#C7E9C0"),
+    alpha = 0.75
+  )
+)
+plants_species_venn
+
+length(plants_species_venn$P) <- 13
+length(plants_species_venn$B) <- 13
+length(plants_species_venn$M) <- 13
+length(plants_species_venn$B__P) <- 13
+length(plants_species_venn$B__M) <- 13
+length(plants_species_venn$M__P) <- 13
+length(plants_species_venn$B__M__P) <- 13
+
+plant_venn_list <- data.frame(plants_species_venn)
+
+plants_relab_venn <- ps_venn(plants,
+  group = "phase",
+  weight = T, relative = T,
+  quantities = list(type = c("percent"), font = 1, cex = 1),
+  labels = list(font = 2, cex = 1.5),
+  main = " ",
+  fill = list(
+    fill = c("#41AB5D", "#00441B", "#C7E9C0"),
+    alpha = 0.75
+  )
+)
+plants_relab_venn
+
+ggarrange(plants_species_venn, plants_relab_venn, nrow = 1)
+```
+
+
+malaise traps
+
+```{r}
+insects <- readRDS(here("data/insects/heathland-fire-insects.RDS"))
+insects
+insects <- prune_taxa(taxa_sums(insects) > 0, insects)
+insects
+
+inrar <- rarefy_even_depth(insects,
+  rngseed = 123,
+  replace = F,
+  trimOTUs = T,
+  sample.size = min(sample_sums(insects))
+)
+insects
+inrar
+
+inrar <- transform_sample_counts(inrar, function(x) x / sum(x)) # compute relative abundances
+
+dis <- vegdist(x = t(inrar@otu_table), method = "bray") # compute dissimilarity index
+
+ordmod <- cmdscale(
+  d = dis,
+  k = 2,
+  eig = TRUE,
+  add = TRUE
+) # perform MDS/PCoA
+
+plot1 <- ordiplot(ordmod, choices = c(1, 2))
+
+sites.long1 <- sites.long(plot1, env.data = inrar@sam_data)
+
+ev <- ordmod$eig # get eigenvalues
+percent_explained <- 100 * ev / sum(ev) # store eigenvalues
+percent_explained[1:2] # gives the percent explained for the first two axis
+
+plot1 <- ordiplot(ordmod, choices = c(1, 2))
+ggplot() +
+  theme_classic() +
+  geom_vline(xintercept = c(0), color = "grey10", linetype = 2) +
+  geom_hline(yintercept = c(0), color = "grey10", linetype = 2) +
+  xlab(paste0("PCoA axis 1 (", round(percent_explained[1], digits = 1), " %)")) +
+  ylab(paste0("PCoA axis 2 (", round(percent_explained[2], digits = 1), " %)")) +
+  scale_x_continuous(sec.axis = dup_axis(labels = NULL, name = NULL)) +
+  scale_y_continuous(sec.axis = dup_axis(labels = NULL, name = NULL)) +
+  geom_point(
+    data = sites.long1,
+    aes(
+      x = axis1, y = axis2,
+      colour = factor(inrar@sam_data$phase, levels = c("P", "B", "M")),
+      fill = factor(inrar@sam_data$phase, levels = c("P", "B", "M"))
+    ),
+    pch = 21, size = 4, alpha = 0.8
+  ) +
+  scale_color_manual(values = rep("black", times = 12)) +
+  scale_shape_manual(values = c(21, 22)) +
+  scale_fill_manual(values = c("#FDE0EF", "#DE77AE", "#C51B7D")) +
+  labs(title = "Malaise traps") +
+  theme(
+    legend.title = element_blank(),
+    legend.position = "bottom"
+  ) -> mabet
+mabet
+
+# make venn diagrams with shared and unique taxa between groups
+library(MicEco)
+insect_species_venn <- ps_venn(inrar,
+  group = "phase",
+  quantities = list(type = c("counts", "percent"), font = 1, cex = 1),
+  labels = list(font = 2, cex = 1.5),
+  weight = F,
+  main = "Malaise traps",
+  fill = list(fill = c("#DE77AE", "#C51B7D", "#FDE0EF"), alpha = 0.75)
+)
+insect_average_relative_abundance <- ps_venn(inrar,
+  group = "phase",
+  quantities = list(type = c("percent"), font = 1, cex = 1),
+  labels = list(font = 2, cex = 1.5),
+  weight = T, relative = T,
+  main = " ",
+  fill = list(fill = c("#DE77AE", "#C51B7D", "#FDE0EF"), alpha = 0.75)
+)
+
+ggarrange(insect_species_venn, insect_average_relative_abundance, nrow = 1)
+```
+
+
+pitfall traps
+
+```{r}
+ground <- readRDS(here("data/walking_arthropods/heathland-fire-walking-arthropods.RDS"))
+walk
+
+groundrar <- rarefy_even_depth(ground,
+  rngseed = 123,
+  replace = F,
+  trimOTUs = T,
+  sample.size = 10
+)
+ground
+groundrar
+
+groundrar <- transform_sample_counts(groundrar, function(x) x / sum(x)) # compute relative abundances
+
+dis <- vegdist(x = groundrar@otu_table, method = "bray") # compute dissimilarity index
+
+ordmod <- cmdscale(
+  d = dis,
+  k = 2,
+  eig = TRUE,
+  add = TRUE
+) # perform MDS/PCoA
+
+plot1 <- ordiplot(ordmod, choices = c(1, 2))
+
+sites.long1 <- sites.long(plot1, env.data = groundrar@sam_data)
+
+ev <- ordmod$eig # get eigenvalues
+percent_explained <- 100 * ev / sum(ev) # store eigenvalues
+percent_explained[1:2] # gives the percent explained for the first two axis
+
+plot1 <- ordiplot(ordmod, choices = c(1, 2))
+ggplot() +
+  theme_classic() +
+  geom_vline(xintercept = c(0), color = "grey10", linetype = 2) +
+  geom_hline(yintercept = c(0), color = "grey10", linetype = 2) +
+  xlab(paste0("PCoA axis 1 (", round(percent_explained[1], digits = 1), " %)")) +
+  ylab(paste0("PCoA axis 2 (", round(percent_explained[2], digits = 1), " %)")) +
+  scale_x_continuous(sec.axis = dup_axis(labels = NULL, name = NULL)) +
+  scale_y_continuous(sec.axis = dup_axis(labels = NULL, name = NULL)) +
+  geom_point(
+    data = sites.long1,
+    aes(
+      x = axis1, y = axis2,
+      colour = factor(groundrar@sam_data$phase, levels = c("P", "B", "M")),
+      fill = factor(groundrar@sam_data$phase, levels = c("P", "B", "M"))
+    ),
+    pch = 21, size = 4, alpha = 0.8
+  ) +
+  geom_point(
+    data = centroids.long(sites.long1,
+      FUN = mean,
+      grouping = factor(groundrar@sam_data$phase, levels = c("P", "B", "M")),
+      centroids.only = TRUE
+    ),
+    aes(x = axis1c, y = axis2c, colour = Centroid, fill = Centroid),
+    pch = 24, size = 4, alpha = 1
+  ) +
+  scale_color_manual(values = rep("black", times = 12)) +
+  scale_shape_manual(values = c(21, 22)) +
+  scale_fill_manual(values = c("tan", "tan3", "tan4")) +
+  labs(title = "Pitfall traps") +
+  theme(
+    legend.title = element_blank(),
+    legend.position = "bottom"
+  ) -> grobet
+grobet
+
+
+
+adonis2(dis ~ phase,
+  data = data.frame(groundrar@sam_data),
+  permutations = 9999,
+  method = "bray"
+)
+
+pairwise.adonis2(dis ~ phase,
+  data = data.frame(groundrar@sam_data),
+  nperm = 9999,
+  method = "bray"
+)
+
+# make venn diagrams
+walk_species_venn <- ps_venn(warar,
+  group = "phase",
+  quantities = list(type = c("counts", "percent"), font = 1, cex = 1),
+  labels = list(font = 2, cex = 1.5),
+  weight = F,
+  main = "Pitfall traps",
+  fill = list(fill = c("tan3", "tan4", "tan"), alpha = 0.75)
+)
+walk_average_relative_abundance <- ps_venn(warar,
+  group = "phase",
+  quantities = list(type = c("percent"), font = 1, cex = 1),
+  labels = list(font = 2, cex = 1.5),
+  weight = T, relative = T,
+  main = " ",
+  fill = list(fill = c("tan3", "tan4", "tan"), alpha = 0.75)
+)
+ggarrange(walk_species_venn, walk_average_relative_abundance, nrow = 1)
+```
+
+
+nematodes
+
+```{r}
+# load and normalise phyloseq object:
+nematodes <- readRDS(here("data/nematodes/heathland-fire-nematodes.RDS"))
+nematodes
+nematodes <- prune_taxa(taxa_sums(nematodes) > 0, nematodes)
+nematodes
+
+nematodes@sam_data$phase <- sub("Pioner", "P", nematodes@sam_data$phase)
+nematodes@sam_data$phase <- sub("Bygg", "B", nematodes@sam_data$phase)
+nematodes@sam_data$phase <- sub("Moden", "M", nematodes@sam_data$phase)
+
+nemrar <- rarefy_even_depth(nematodes,
+  rngseed = 123,
+  replace = F,
+  trimOTUs = T,
+  sample.size = min(sample_sums(nematodes))
+)
+nematodes
+nemrar
+
+nemrar <- transform_sample_counts(nemrar, function(x) x / sum(x))
+
+dis <- vegdist(
+  x = nemrar@otu_table,
+  method = "bray"
+)
+ordmod <- cmdscale(
+  d = dis,
+  k = 2,
+  eig = TRUE,
+  add = TRUE
+)
+plot1 <- ordiplot(ordmod, choices = c(1, 2))
+
+sites.long1 <- sites.long(plot1, env.data = nemrar@sam_data)
+
+ev <- ordmod$eig # get eigenvalues
+percent_explained <- 100 * ev / sum(ev) # store eigenvalues
+percent_explained[1:2] # gives the percent explained for the first two axis
+
+plot1 <- ordiplot(ordmod, choices = c(1, 2))
+
+ggplot() +
+  theme_classic() +
+  geom_vline(xintercept = c(0), color = "grey10", linetype = 2) +
+  geom_hline(yintercept = c(0), color = "grey10", linetype = 2) +
+  xlab(paste0("PCoA axis 1 (", round(percent_explained[1], digits = 1), " %)")) +
+  ylab(paste0("PCoA axis 2 (", round(percent_explained[2], digits = 1), " %)")) +
+  scale_x_continuous(sec.axis = dup_axis(labels = NULL, name = NULL)) +
+  scale_y_continuous(sec.axis = dup_axis(labels = NULL, name = NULL)) +
+  geom_point(
+    data = sites.long1,
+    aes(
+      x = axis1, y = axis2,
+      colour = factor(nemrar@sam_data$phase, levels = c("P", "B", "M")),
+      fill = factor(nemrar@sam_data$phase, levels = c("P", "B", "M"))
+    ),
+    pch = 21, size = 4, alpha = 0.8
+  ) +
+  geom_point(
+    data = centroids.long(sites.long1,
+      FUN = mean,
+      grouping = factor(nemrar@sam_data$phase, levels = c("P", "B", "M")),
+      centroids.only = TRUE
+    ),
+    aes(x = axis1c, y = axis2c, colour = Centroid, fill = Centroid),
+    pch = 24, size = 4, alpha = 1
+  ) +
+  scale_color_manual(values = rep("black", times = 12)) +
+  scale_shape_manual(values = c(21, 22)) +
+  scale_fill_manual(values = c("#F7FBFF", "#9ECAE1", "#08519C")) +
+  labs(title = "Nematodes") +
+  theme(
+    legend.title = element_blank(),
+    legend.position = "bottom"
+  ) -> nemabet
+nemabet
+
+adonis2(dis ~ phase,
+  data = data.frame(nemrar@sam_data),
+  permutations = 9999, method = "bray"
+)
+
+pairwise.adonis2(dis ~ phase,
+  data = data.frame(nemrar@sam_data),
+  nperm = 9999, method = "bray"
+)
+
+# make venn diagrams
+nematodes_species_venn <- ps_venn(nemrar,
+  group = "phase",
+  quantities = list(type = c("counts", "percent"), font = 1, cex = 1),
+  labels = list(font = 2, cex = 1.5),
+  weight = F,
+  main = "Nematodes",
+  fill = list(fill = c("#9ECAE1", "#08519C", "#F7FBFF"), alpha = 0.75)
+)
+nematodes_relab_venn <- ps_venn(nemrar,
+  group = "phase",
+  quantities = list(type = c("percent"), font = 1, cex = 1),
+  labels = list(font = 2, cex = 1.5),
+  weight = T, relative = T,
+  main = " ",
+  fill = list(fill = c("#9ECAE1", "#08519C", "#F7FBFF"), alpha = 0.75)
+)
+ggarrange(nematodes_species_venn, nematodes_relab_venn, nrow = 1)
+```
+
+
+fungi
+
+```{r}
+# load and normalise phyloseq object:
+fungi <- readRDS(here("data/fungi/heathland-fire-fungi.RDS"))
+fungi
+fungi <- prune_taxa(taxa_sums(fungi) > 0, fungi)
+fungi
+
+fungi@sam_data$phase <- sub("Pioner", "P", fungi@sam_data$phase)
+fungi@sam_data$phase <- sub("Bygg", "B", fungi@sam_data$phase)
+fungi@sam_data$phase <- sub("Moden", "M", fungi@sam_data$phase)
+
+funrar <- rarefy_even_depth(fungi,
+  rngseed = 123,
+  replace = F,
+  trimOTUs = T,
+  sample.size = min(sample_sums(fungi))
+)
+fungi
+funrar
+
+funrar <- transform_sample_counts(funrar, function(x) x / sum(x))
+
+dis <- vegdist(x = funrar@otu_table, method = "bray")
+
+ordmod <- cmdscale(
+  d = dis,
+  k = 2,
+  eig = TRUE,
+  add = TRUE
+)
+plot1 <- ordiplot(ordmod, choices = c(1, 2))
+
+sites.long1 <- sites.long(plot1, env.data = funrar@sam_data)
+
+ev <- ordmod$eig # get eigenvalues
+percent_explained <- 100 * ev / sum(ev) # store eigenvalues
+percent_explained[1:2] # gives the percent explained for the first two axis
+
+plot1 <- ordiplot(ordmod, choices = c(1, 2))
+
+ggplot() +
+  theme_classic() +
+  geom_vline(xintercept = c(0), color = "grey10", linetype = 2) +
+  geom_hline(yintercept = c(0), color = "grey10", linetype = 2) +
+  xlab(paste0("PCoA axis 1 (", round(percent_explained[1], digits = 1), " %)")) +
+  ylab(paste0("PCoA axis 2 (", round(percent_explained[2], digits = 1), " %)")) +
+  scale_x_continuous(sec.axis = dup_axis(labels = NULL, name = NULL)) +
+  scale_y_continuous(sec.axis = dup_axis(labels = NULL, name = NULL)) +
+  geom_point(
+    data = sites.long1,
+    aes(
+      x = axis1, y = axis2,
+      colour = factor(funrar@sam_data$phase, levels = c("P", "B", "M")),
+      fill = factor(funrar@sam_data$phase, levels = c("P", "B", "M"))
+    ),
+    pch = 21, size = 4, alpha = 0.8
+  ) +
+  geom_point(
+    data = centroids.long(sites.long1,
+      FUN = mean,
+      grouping = factor(funrar@sam_data$phase, levels = c("P", "B", "M")),
+      centroids.only = TRUE
+    ),
+    aes(x = axis1c, y = axis2c, colour = Centroid, fill = Centroid),
+    pch = 24, size = 4, alpha = 1
+  ) +
+  scale_color_manual(values = rep("black", times = 12)) +
+  scale_shape_manual(values = c(21, 22)) +
+  scale_fill_manual(values = c("#DADAEB", "#9E9AC8", "#54278F")) +
+  labs(title = "Fungi") +
+  theme(
+    legend.title = element_blank(),
+    legend.position = "bottom"
+  ) -> funbet
+funbet
+
+adonis2(dis ~ phase,
+  data = data.frame(funrar@sam_data),
+  nperm = 9999, method = "bray"
+)
+
+pairwise.adonis2(dis ~ phase,
+  data = data.frame(funrar@sam_data),
+  nperm = 9999, method = "bray"
+)
+
+# make venn diagrams
+fungi_species_venn <- ps_venn(funrar,
+  group = "phase",
+  quantities = list(type = c("counts", "percent"), font = 1, cex = 1),
+  labels = list(font = 2, cex = 1.5),
+  weight = F,
+  main = "Fungi",
+  fill = list(fill = c("#9E9AC8", "#54278F", "#DADAEB"), alpha = 0.75)
+)
+fungi_relab_venn <- ps_venn(funrar,
+  group = "phase",
+  quantities = list(type = c("percent"), font = 1, cex = 1),
+  labels = list(font = 2, cex = 1.5),
+  weight = T, relative = T,
+  main = " ",
+  fill = list(fill = c("#9E9AC8", "#54278F", "#DADAEB"), alpha = 0.75)
+)
+ggarrange(fungi_species_venn, fungi_relab_venn, nrow = 1)
+```
+
+
+bacteria
+
+```{r}
+# load and normalise phyloseq object:
+bacteria <- readRDS(here("data/bacteria/heathland-fire-bacteria.RDS"))
+bacteria
+bacteria <- prune_taxa(taxa_sums(bacteria) > 0, bacteria)
+bacteria
+
+bacteria@sam_data$phase <- sub("Pioner", "P", bacteria@sam_data$phase)
+bacteria@sam_data$phase <- sub("Bygg", "B", bacteria@sam_data$phase)
+bacteria@sam_data$phase <- sub("Moden", "M", bacteria@sam_data$phase)
+
+bacrar <- rarefy_even_depth(bacteria,
+  rngseed = 123,
+  replace = F,
+  trimOTUs = T,
+  sample.size = 18963
+)
+bacteria
+bacrar
+
+bacrar <- transform_sample_counts(bacrar, function(x) x / sum(x))
+
+dis <- vegdist(
+  x = bacrar@otu_table,
+  method = "bray"
+)
+ordmod <- cmdscale(
+  d = dis,
+  k = 2,
+  eig = TRUE,
+  add = TRUE
+)
+plot1 <- ordiplot(ordmod, choices = c(1, 2))
+
+sites.long1 <- sites.long(plot1, env.data = bacrar@sam_data)
+
+ev <- ordmod$eig # get eigenvalues
+percent_explained <- 100 * ev / sum(ev) # store eigenvalues
+percent_explained[1:2] # gives the percent explained for the first two axis
+
+plot1 <- ordiplot(ordmod, choices = c(1, 2))
+
+ggplot() +
+  theme_classic() +
+  geom_vline(xintercept = c(0), color = "grey10", linetype = 2) +
+  geom_hline(yintercept = c(0), color = "grey10", linetype = 2) +
+  xlab(paste0("PCoA axis 1 (", round(percent_explained[1], digits = 1), " %)")) +
+  ylab(paste0("PCoA axis 2 (", round(percent_explained[2], digits = 1), " %)")) +
+  scale_x_continuous(sec.axis = dup_axis(labels = NULL, name = NULL)) +
+  scale_y_continuous(sec.axis = dup_axis(labels = NULL, name = NULL)) +
+  geom_point(
+    data = sites.long1,
+    aes(
+      x = axis1, y = axis2,
+      colour = factor(bacrar@sam_data$phase, levels = c("P", "B", "M")),
+      fill = factor(bacrar@sam_data$phase, levels = c("P", "B", "M"))
+    ),
+    pch = 21, size = 4, alpha = 0.8
+  ) +
+  geom_point(
+    data = centroids.long(sites.long1,
+      FUN = mean,
+      grouping = factor(bacrar@sam_data$phase, levels = c("P", "B", "M")),
+      centroids.only = TRUE
+    ),
+    aes(x = axis1c, y = axis2c, colour = Centroid, fill = Centroid),
+    pch = 24, size = 4, alpha = 1
+  ) +
+  scale_color_manual(values = rep("black", times = 12)) +
+  scale_shape_manual(values = c(21, 22)) +
+  scale_fill_manual(values = c("#FEE0D2", "#FC9272", "#CB181D")) +
+  labs(title = "Bacteria") +
+  theme(
+    legend.title = element_blank(),
+    legend.position = "bottom"
+  ) -> bacbet
+bacbet
+
+adonis2(dis ~ phase,
+  data = data.frame(bacrar@sam_data),
+  nperm = 9999, method = "bray"
+)
+
+pairwise.adonis2(dis ~ phase,
+  data = data.frame(bacrar@sam_data),
+  nperm = 9999, method = "bray"
+)
+
+# make venn diagrams
+bacteria_genus_venn <- ps_venn(bacrar,
+  group = "phase",
+  quantities = list(type = c("counts", "percent"), font = 1, cex = 1),
+  labels = list(font = 2, cex = 1.5),
+  weight = F,
+  main = "Bacteria",
+  fill = list(fill = c("#FC9272", "#CB181D", "#FEE0D2"), alpha = 0.75)
+)
+bacteria_relab_venn <- ps_venn(bacrar,
+  group = "phase",
+  quantities = list(type = c("percent"), font = 1, cex = 1),
+  labels = list(font = 2, cex = 1.5),
+  weight = T, relative = T,
+  main = " ",
+  fill = list(fill = c("#FC9272", "#CB181D", "#FEE0D2"), alpha = 0.75)
+)
+
+ggarrange(bacteria_genus_venn, bacteria_relab_venn, nrow = 1)
+
+
+```
+
+
+combine plots
+
+```{r}
+
+# ordinations
+ggarrange(plabet, mabet, grobet,
+  nemabet, funbet, bacbet,
+  ncol = 3, nrow = 2
+)
+
+# venn diagrams
+spec <- ggarrange(plants_species_venn, NULL, insect_species_venn, NULL, walk_species_venn, NULL, 
+                  nematodes_species_venn, NULL, fungi_species_venn, NULL, bacteria_genus_venn,
+                  nrow = 1, #ncol = 5,
+                  widths = c(1, 0.2, 1, 0.2, 1, 0.2, 
+                             1, 0.2, 1, 0.2, 1)); spec
+abund <- ggarrange(plants_relab_venn, NULL, insect_average_relative_abundance, NULL, walk_average_relative_abundance, NULL, 
+                   nematodes_relab_venn, NULL, fungi_relab_venn, NULL, bacteria_relab_venn,
+                   #bacteria_relab_venn, NULL, fungi_relab_venn, NULL, nematodes_relab_venn, NULL, 
+                   #walk_average_relative_abundance, NULL, insect_average_relative_abundance, NULL, plants_relab_venn, 
+                   nrow = 1, #ncol = 5, 
+                   widths = c(1, 0.2, 1, 0.2, 1, 0.2,
+                              1, 0.2, 1, 0.2, 1)); abund
+ggarrange(NULL, spec, NULL, 
+          NULL, abund, NULL,
+          nrow = 2, ncol = 3, 
+          widths = c(0.1, 1, 0.1, 0.1, 1, 0.1),
+          heights = c(1, 1)) # 
+
+topvenn <- ggarrange(plants_species_venn,  insect_species_venn,  walk_species_venn,
+          plants_relab_venn,  insect_average_relative_abundance,  walk_average_relative_abundance, 
+          #NULL, NULL, NULL,
+          #nematodes_species_venn,  fungi_species_venn,  bacteria_genus_venn,
+          #nematodes_relab_venn,  fungi_relab_venn, bacteria_relab_venn, 
+          nrow = 2, ncol = 3)
+
+bottomvenn <- ggarrange(#plants_species_venn,  insect_species_venn,  walk_species_venn,
+          #plants_relab_venn,  insect_average_relative_abundance,  walk_average_relative_abundance, 
+          #NULL, NULL, NULL,
+          nematodes_species_venn,  fungi_species_venn,  bacteria_genus_venn,
+          nematodes_relab_venn,  fungi_relab_venn, bacteria_relab_venn, 
+          nrow = 2, ncol = 3)
+
+ggarrange(NULL, 
+          topvenn, 
+          NULL, 
+          bottomvenn,
+          NULL,
+          heights = c(0.05, 1, 0.1, 1, 0.05),
+          nrow = 5)
+```

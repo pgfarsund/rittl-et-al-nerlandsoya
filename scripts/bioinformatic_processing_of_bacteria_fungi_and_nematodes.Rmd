@@ -1,0 +1,543 @@
+---
+title: "bioinformatic_processing_of_bacteria_fungi_and_nematodes"
+author: "pgfarsund"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+load packages
+
+```{r}
+library(here) # used for locating files within the R project
+library(dada2) # used for running the DADA2 pipeline
+library(tidyverse) # for keeping things nice and tidy
+```
+
+
+bacteria 
+
+```{r}
+# getting ready:
+path <- here("data/fastq_files/bacteria/bacteria_fastq/batch_14_without_seminaturlig_eng/batch_14")
+list.files(path)
+fnFs <- sort(list.files(path, pattern = "BC_01", full.names = TRUE))
+fnFs
+
+sample.names <- sapply(strsplit(basename(fnFs), ".f"), `[`, 1)
+sample.names
+
+# inspect quality profiles:
+plotQualityProfile(fnFs) +
+  geom_hline(yintercept = c(20, 25, 30)) +
+  geom_vline(xintercept = 290)
+
+# filter and trim:
+filtFs <- file.path(
+  path,
+  "filtered",
+  paste0(sample.names, "_filtered")
+)
+filtFs
+names(filtFs) <- sample.names
+filtFs #
+
+# Do the filtering
+out <- filterAndTrim(
+  fwd = fnFs,
+  filt = filtFs,
+  compress = TRUE,
+  multithread = TRUE,
+  maxN = 0,
+  maxEE = 2,
+  minLen = 50,
+  verbose = TRUE,
+  trimLeft = 30 # seems like adapter or primer sequences were not fully removed...
+)
+out
+
+out <- out[rowSums(out) > 0, ]
+out.df <- data.frame(out) %>%
+  mutate(percent.kept = (reads.out / reads.in) * 100)
+View(out.df) # in this dataframe we can inspect how many reads went into and out of the filtering. if too few reads passed, we can adjust our filtering parameters.
+
+filtFs <- filtFs[file.exists(filtFs)] # remove names of files that did not pass filtering and therefore don1t exist.
+
+# learn the error rates:
+errF <- learnErrors(filtFs, multithread = TRUE, verbose = TRUE) # first we learn the error rates
+plotErrors(errF, nominalQ = TRUE) # these learned error rates look weird
+
+# run the dada2 algorithm:
+dadaFs <- dada(filtFs,
+  err = errF,
+  multithread = TRUE,
+  HOMOPOLYMER_GAP_PENALTY = -1,
+  BAND_SIZE = 32,
+  verbose = TRUE
+) # Now we run the dada2 machine learning
+
+# make ASV-by-sample matrix:
+seqtab <- makeSequenceTable(dadaFs)
+dim(seqtab)
+
+table(nchar(getSequences(seqtab)))
+seqtab.nochim <- removeBimeraDenovo(seqtab,
+  method = "consensus",
+  multithread = TRUE,
+  verbose = TRUE
+)
+dim(seqtab.nochim)
+
+sum(seqtab.nochim) / sum(seqtab)
+
+# assign taxonomy:
+# (but first, save the final seqtab in case of crash)
+saveRDS(final_seqtab, here("data/bacteria/final_seqtab_bacteria.RDS"))
+final_seqtab <- as.matrix(final_seqtab)
+bacteria_taxa <- assignTaxonomy(
+  seqs = seqtab.nochim,
+  refFasta = here("data/bacteria/silva_nr99_v138.1_wSpecies_train_set.fa.gz"),
+  multithread = TRUE
+)
+
+# make phyloseq object:
+library(phyloseq)
+library(readxl)
+
+# fix each component of the phyloseq object:
+tax <- tax_table(bacteria_taxa)
+asv <- otu_table(seqtab.nochim, taxa_are_rows = FALSE)
+sample_names(asv)
+sam <- read.csv(here("data/sample_data.csv")) %>%
+  mutate(
+    month = c(
+      rep(c("mai", "august"), each = 12), # add month as a variable
+      "blank"
+    ),
+    phase = c(rep(rep(c("Bygg", "Moden", "Pioner", "Seminaturlig eng"), # add successional phase as a variable
+      each = 3
+    ), times = 2), "blank")
+  ) %>%
+  filter(phase != "Seminaturlig eng")
+sam <- sample_data(sam)
+sample_names(sam)
+
+# fix sample names:
+sample_names(asv) <- paste0("sample_", 1:nsamples(asv))
+nsamples(sam)
+sample_names(asv)
+sample_names(sam) <- paste0("sample_", 1:nsamples(sam))
+nsamples(sam)
+sample_names(sam)
+
+bac <- phyloseq(tax, asv, sam)
+bac
+bac <- prune_taxa(taxa_sums(bac) > 0, bac)
+bac
+saveRDS(bac, here("data/bacteria/heathland-fire-bacteria.RDS"))
+```
+
+
+fungi
+
+```{r}
+# DADA2 fungi
+
+library(here) # used for locating files within the R project
+library(dada2) # used for running the DADA2 pipeline
+library(tidyverse) # for keeping things nice and tidy
+
+# getting ready:
+path <- here("data/fastq_files/fungi/fungi_fastq/fungi_without_seminaturlig_eng/")
+list.files(path)
+fnFs <- sort(list.files(path, pattern = "Fungi_final_02", full.names = TRUE))
+fnFs
+
+sample.names <- sapply(strsplit(basename(fnFs), "_t"), `[`, 1)
+sample.names
+sample.names <- sub("final_", "", sample.names)
+sample.names
+
+# inspect quality profiles:
+plotQualityProfile(fnFs) +
+  geom_hline(yintercept = c(20, 25, 30)) +
+  geom_vline(xintercept = 290)
+
+# filter and trim:
+filtFs <- file.path(
+  path,
+  "filtered",
+  paste0(sample.names, "_filtered")
+)
+filtFs
+names(filtFs) <- sample.names
+filtFs #
+
+# Do the filtering
+out <- filterAndTrim(
+  fwd = fnFs,
+  filt = filtFs,
+  multithread = TRUE,
+  maxN = 0,
+  maxEE = 2,
+  minLen = 50,
+  verbose = TRUE
+)
+out
+
+out <- out[rowSums(out) > 0, ]
+out.df <- data.frame(out) %>%
+  mutate(percent.kept = (reads.out / reads.in) * 100)
+View(out.df) # in this dataframe we can inspect how many reads went into and out of the filtering. if too few reads passed, we can adjust our filtering parameters.
+
+filtFs <- filtFs[file.exists(filtFs)] # remove names of files that did not pass filtering and therefore don1t exist.
+
+# learn the error rates:
+errF <- learnErrors(filtFs, multithread = TRUE, verbose = TRUE) # first we learn the error rates
+plotErrors(errF, nominalQ = TRUE) # these learned error rates look weird
+
+# run the dada2 algorithm:
+dadaFs <- dada(filtFs,
+  err = errF,
+  multithread = TRUE,
+  HOMOPOLYMER_GAP_PENALTY = -1,
+  BAND_SIZE = 32,
+  verbose = TRUE
+) # Now we run the dada2 machine learning
+
+# make ASV-by-sample matrix:
+seqtab <- makeSequenceTable(dadaFs)
+dim(seqtab)
+
+table(nchar(getSequences(seqtab)))
+seqtab.nochim <- removeBimeraDenovo(seqtab,
+  method = "consensus",
+  multithread = TRUE,
+  verbose = TRUE
+)
+dim(seqtab.nochim)
+
+sum(seqtab.nochim) / sum(seqtab) #
+
+# next we will cluster our chimera-free ASVs at 97 % similarity using vsearch (Rognes et al.).
+# for that we need to write fasta files for each sample:
+
+seqtab.nochim <- data.frame(seqtab.nochim) # we need this in data.frame format
+rownames(seqtab.nochim) <- paste0("sample_", 1:nrow(seqtab.nochim))
+
+# write a loop to automate the process
+for (i in 1:nrow(seqtab.nochim)) {
+  # subset samples in turn
+  seqtab.nochim %>%
+    mutate(sample = rownames(.), .before = 1) %>% # use rownames to subset
+    filter(sample == paste0("sample_", i)) %>% # subset
+    select(-sample) %>% # remove rowname column
+    select(which(!colSums(., na.rm = TRUE) %in% 0)) -> sample # filter out seqs with no reads
+
+  # get DNA sequences
+  dna <- Biostrings::DNAStringSet(colnames(sample))
+
+  # write fasta files
+  seqinr::write.fasta(as.list(dna),
+    file.out = paste0("data/fastq_files/fungi/post_dada2_fasta_files/", "sample_", i, ".fasta"),
+    names = paste0(
+      "sample_", i,
+      # "asv", 1:length(dna@ranges),
+      ";size=", colSums(sample)
+    )
+  )
+
+  # keep track
+  cat("FASTA file created for sample_", i, "\n")
+}
+
+# disclaimer: I used chatGPT for help with debugging the above loop and the below vsearch code
+
+# now we are ready to run vsearch from the terminal:
+# cat *.fasta > combined.fasta # make common fasta file
+# vsearch --cluster_fast combined.fasta --id 0.97 --centroids otus.fasta --relabel OTU --sizein --sizeout --fasta_width 0 # cluster otu's
+# vsearch --usearch_global combined.fasta --db otus.fasta --id 0.97 --otutabout otutab.txt --sizein --sizeout # map OTUs to the original ASVs
+
+# read the OTU-by-sample table
+otutab <- read.csv("data/fastq_files/fungi/post_dada2_fasta_files/otutab.txt",
+  sep = "\t", header = TRUE, row.names = 1
+) %>%
+  mutate(otu = rownames(.), .before = 1)
+
+# read otus.fasta to get the consensus sequences
+library(phylotools)
+fasta.df <- read.fasta("data/fastq_files/fungi/post_dada2_fasta_files/otus.fasta")
+
+fasta.df <- fasta.df %>%
+  separate(col = seq.name, into = c("otu", "abundance"), sep = ";") %>%
+  mutate(abundance = sub("size=", "", abundance)) %>%
+  rename("seq" = "seq.text")
+
+# enter the sequences as rownames in otutab
+otutab_for_lulu <- fasta.df %>%
+  left_join(otutab) %>%
+  select(-abundance, -otu) %>%
+  column_to_rownames("seq") %>%
+  t()
+
+# now that we have clustered our ASV at 97 %, we will run them through lulu for
+# a last clustering step:
+
+sq <- colnames(otutab_for_lulu)
+id <- paste0("OTU", 1:ncol(otutab_for_lulu), "_Abundance=", colSums(otutab_for_lulu))
+names(sq) <- id
+head(sq)
+
+library(ShortRead)
+writeFasta(sq, file = here("data/fastq_files/fungi/lulu/fungi_asv_for_lulu.fasta"))
+
+# run blastn in terminal:
+# *cd to "data/fastq_files/fungi/lulu/fungi_asv_for_lulu.fasta"*
+# makeblastdb -in fungi_asv_for_lulu.fasta -parse_seqids -dbtype nucl
+# blastn -db fungi_asv_for_lulu.fasta -outfmt '6 qseqid sseqid pident' -out match_list_fungi.txt -qcov_hsp_perc 80 -perc_identity 84 -query fungi_asv_for_lulu.fasta
+
+# read the produced match list:
+match_list <- read.table(here("data/fastq_files/fungi/lulu/match_list_fungi.txt"),
+  header = FALSE, as.is = TRUE, stringsAsFactors = FALSE
+)
+head(match_list)
+
+# prepare seqtab.nochim for comparison with match_list:
+seqtab2 <- data.frame(t(otutab_for_lulu))
+head(seqtab2)
+rownames(seqtab2) <- paste0("OTU_", 1:nrow(seqtab2), "_Abundance=", rowSums(seqtab2))
+head(seqtab2)
+
+# run lulu:
+library(lulu)
+curated_result <- lulu(seqtab2, match_list, minimum_match = 0.84)
+
+# check out results and compare with old OTU table:
+dim(curated_result$curated_table)
+dim(curated_result$original_table)
+
+# get new ASV table:
+new_seqtab <- curated_result$curated_table
+
+# retrieve sequences and make a final seqtab to use for taxonomic assignment:
+seqs <- data.frame(sq) %>%
+  rownames_to_column(var = "OTU")
+
+new_seqtab2 <- new_seqtab %>%
+  rownames_to_column(var = "OTU")
+
+left_join(
+  x = new_seqtab2,
+  y = seqs,
+  by = "OTU"
+) %>%
+  column_to_rownames(var = "OTU") %>%
+  select(-sq) %>%
+  t() -> final_seqtab
+
+# assign taxonomy:
+# (but first, save the final seqtab in case of crash)
+# saveRDS(final_seqtab, here("data/fungi/final_seqtab_fungi.RDS"))
+final_seqtab <- as.matrix(final_seqtab)
+fungi_taxa <- assignTaxonomy(
+  seqs = final_seqtab,
+  refFasta = here("data/fungi/unite/sh_general_release_dynamic_s_25.07.2023.fasta"),
+  multithread = TRUE
+)
+
+# make phyloseq object:
+library(phyloseq)
+library(readxl)
+
+# fix each component of the phyloseq object:
+tax <- tax_table(fungi_taxa)
+asv <- otu_table(final_seqtab, taxa_are_rows = FALSE)
+sam <- read.csv(here("data/sample_data.csv")) %>%
+  mutate(
+    month = c(
+      rep(c("mai", "august"), each = 12), # add month as a variable
+      "blank"
+    ),
+    phase = c(rep(rep(c("Bygg", "Moden", "Pioner", "Seminaturlig eng"), # add successional phase as a variable
+      each = 3
+    ), times = 2), "blank")
+  ) %>%
+  filter(phase != "Seminaturlig eng") %>%
+  dplyr::slice(-19)
+sam <- sample_data(sam)
+
+# fix sample names:
+sample_names(asv) <- 1:18
+sample_names(sam) <- 1:18
+
+fun <- phyloseq(tax, asv, sam)
+fun
+
+saveRDS(fun, here("data/fungi/heathland-fire-fungi.RDS"))
+```
+
+
+nematodes
+
+```{r}
+# DADA2 nematodes
+
+library(here) # used for locating files within the R project
+library(dada2) # used for running the DADA2 pipeline
+library(tidyverse) # for keeping things nice and tidy
+
+# getting ready:
+path <- here("data/fastq_files/nematodes/nematodes_fastq/nematodes_without_seminaturlig_eng/")
+list.files(path)
+fnFs <- sort(list.files(path, pattern = "Nem_2_final_0", full.names = TRUE))
+fnFs
+
+sample.names <- sapply(strsplit(basename(fnFs), "_t"), `[`, 1)
+sample.names
+sample.names <- sub("final_", "", sample.names)
+sample.names
+sample.names <- sub("2_", "", sample.names)
+sample.names
+
+# inspect quality profiles:
+plotQualityProfile(fnFs) +
+  theme_linedraw()
+
+# filter and trim:
+filtFs <- file.path(
+  path,
+  "filtered",
+  paste0(sample.names, "_filtered")
+)
+filtFs
+names(filtFs) <- sample.names
+filtFs #
+
+# Do the filtering
+out <- filterAndTrim(
+  fwd = fnFs,
+  filt = filtFs,
+  compress = TRUE,
+  multithread = TRUE,
+  maxN = 0,
+  maxEE = 2,
+  # minLen = 350,
+  maxLen = 450, # PCR products are expected to be around 420 bp
+  verbose = TRUE
+)
+out
+
+out <- out[rowSums(out) > 0, ]
+out.df <- data.frame(out) %>%
+  mutate(percent.kept = (reads.out / reads.in) * 100)
+View(out.df) # in this dataframe we can inspect how many reads went into and out of the filtering. if too few reads passed, we can adjust our filtering parameters.
+
+filtFs <- filtFs[file.exists(filtFs)] # remove names of files that did not pass filtering and therefore don1t exist.
+
+# learn the error rates:
+errF <- learnErrors(filtFs, multithread = TRUE, verbose = TRUE) # first we learn the error rates
+plotErrors(errF, nominalQ = TRUE) # these learned error rates look weird
+
+# run the dada2 algorithm:
+dadaFs <- dada(filtFs,
+  err = errF,
+  multithread = TRUE,
+  HOMOPOLYMER_GAP_PENALTY = -1,
+  BAND_SIZE = 32,
+  verbose = TRUE
+) # Now we run the dada2 machine learning
+
+# make ASV-by-sample matrix:
+seqtab <- makeSequenceTable(dadaFs)
+dim(seqtab)
+
+table(nchar(getSequences(seqtab)))
+seqtab.nochim <- removeBimeraDenovo(seqtab,
+  method = "consensus",
+  multithread = TRUE,
+  verbose = TRUE
+)
+dim(seqtab.nochim)
+
+sum(seqtab.nochim) / sum(seqtab) #
+
+# assign taxonomy:
+# (but first save the final seqtab in case of crash)
+saveRDS(seqtab.nochim, here("data/nematodes/BLAST_classifier/nematode_seqtab_20240725.csv"))
+final_seqtab <- as.matrix(seqtab.nochim)
+nematodes_taxa <- assignTaxonomy(
+  seqs = final_seqtab,
+  refFasta = "~/Downloads/18S_NemaBase 2.fasta",
+  # refFasta = here("data/nematodes/18S_NemaBase.fasta"),
+  multithread = TRUE
+)
+
+# fix columns names to fit all taxonomic levels from 18S Nemabase:
+nematodes_taxa_df <- data.frame(nematodes_taxa)
+colnames(nematodes_taxa_df) <- c(
+  "domain",
+  "kingdom",
+  "phylum",
+  "subphylum",
+  "superclass",
+  "class",
+  "subclass",
+  "suborder",
+  "order",
+  "suborder",
+  "infraorder",
+  "superfamily",
+  "family",
+  "subfamily",
+  "genus",
+  "species"
+) # 16 taxonomic levels :)
+nematode_taxonomic_table <- nematodes_taxa_df %>%
+  select(
+    kingdom,
+    phylum,
+    class,
+    order,
+    family,
+    genus,
+    species
+  ) %>%
+  filter(phylum != "Arthropoda")
+str(nematode_taxonomic_table) # better!
+
+# make phyloseq object:
+library(phyloseq)
+library(readxl)
+
+# fix each component of the phykoseq object:
+tax <- tax_table(as.matrix(nematode_taxonomic_table))
+asv <- otu_table(final_seqtab, taxa_are_rows = FALSE)
+sam <- read.csv(here("data/sample_data.csv")) %>%
+  mutate(
+    month = c(
+      rep(c("mai", "august"), each = 12), # add month as a variable
+      "blank"
+    ),
+    phase = c(rep(rep(c("Bygg", "Moden", "Pioner", "Seminaturlig eng"), # add successional phase as a variable
+      each = 3
+    ), times = 2), "blank")
+  ) %>%
+  dplyr::slice(-25) %>%
+  filter(phase != "Seminaturlig eng")
+sam <- sample_data(sam)
+
+# fix sample names:
+sample_names(asv) <- 1:18
+sample_names(sam) <- 1:18
+
+nem <- phyloseq(tax, asv, sam)
+nem <- tax_glom(nem, taxrank = "species")
+
+# a manual blast search of all glommed sequences revealed that three ASVs
+# have wrong taxonomy (...). we therefore filter them out:
+nem <- subset_taxa(nem, species != "Trichinella_pseudospiralis")
+nem <- subset_taxa(nem, species != "Trichinella_spiralis")
+nem <- subset_taxa(nem, species != "Tylenchus_naranensis")
+
+# save the phyloseq object
+saveRDS(nem, here("data/nematodes/heathland-fire-nematodes.RDS"))
+```

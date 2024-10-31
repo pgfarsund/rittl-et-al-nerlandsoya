@@ -1,0 +1,658 @@
+---
+title: "heathland_fire_alpha_diversity"
+author: "pgfarsund"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+this script performs calculations, statistical testing, and plotting for 
+alpha diversity analysis included in Rittl et al. 2024. every chunk of code
+includes one organismal group and performs the following tasks: 
+1) calculate richness and shannon diversity in all samples
+2) test whether ricness or shannon diversity is different between the three successional phases
+3) make boxplots showing alpha diversity across phases
+
+```{r}
+library(here)
+library(tidyverse)
+library(phyloseq)
+library(ggpubr)
+library(janitor)
+library(emmeans)
+
+set.seed(123)
+```
+
+
+plants
+
+```{r}
+# load phyloseq object:
+plants <- readRDS(here("data/plants/heathland-fire-plants.RDS"))
+plants <- prune_taxa(taxa_sums(plants) > 0, plants)
+plants
+
+# calculate alpha diversity measures and find medians and IQR: 
+tibble(
+  estimate_richness(plants,
+    measures = c("Observed", "Shannon")
+  ),
+  data.frame(plants@sam_data)
+) %>%
+  select(Observed, Shannon, phase) %>%
+  group_by(phase) %>%
+  mutate(
+    q1_richness = quantile(Observed)[2],
+    med_richness = quantile(Observed)[3],
+    q3_richness = quantile(Observed)[4],
+  ) %>%
+  mutate(
+    q1_shannon = quantile(Shannon)[2],
+    med_shannon = quantile(Shannon)[3],
+    q3_shannon = quantile(Shannon)[4],
+  ) %>%
+  select(-c(Observed, Shannon)) %>%
+  distinct() %>%
+  arrange(phase = factor(
+    phase,
+    levels = c("P", "B", "M")
+  )) -> alpha_stats
+
+# test whether differences in alpha diversity are significant between phases: 
+tibble(
+  estimate_richness(plants,
+                    measures = c("Observed", "Shannon")
+  ),
+  data.frame(plants@sam_data)
+) -> df
+
+# richness
+var(df$Observed); mean(df$Observed) # data is not overdispersed
+mod <- glm(Observed ~ phase, data = df, family = poisson); summary(mod)
+emmeans(mod, pairwise ~ phase)
+
+# shannon
+hist(df$Shannon, breaks = 30); shapiro.test(df$Shannon)
+var(df$Shannon); mean(df$Shannon) # data is not overdispersed
+mod <- glm(Shannon ~ phase, data = df, family = gaussian); summary(mod)
+emmeans(mod, pairwise ~ phase)
+
+df %>% 
+ggplot(aes(x=factor(phase, levels=c("P", "B", "M")), 
+             y=Observed, 
+             fill=factor(phase, levels=c("P", "B", "M")), 
+             color=factor(phase, levels=c("P", "B", "M")))) + 
+  theme_classic() + 
+  geom_boxplot(linewidth = 0.6, alpha = 1, outlier.shape = NA, width = 0.5) + 
+  geom_jitter(size = 2, shape = 21, stroke = 1, alpha=0.5,
+              position = position_jitter(height = 0, width = 0.3)) +
+  theme(legend.position = "none", 
+        axis.title.x = element_blank(), 
+        axis.text.x = element_text(color = "white"), 
+        axis.ticks.x = element_blank()) + 
+  scale_fill_brewer(palette = "Greens") + 
+  scale_color_manual(values = rep("black", times=length(unique(plants@sam_data$phase)))) +
+  ylab("Richness") +
+  ggtitle("Plants") +
+  geom_segment(x = 1, xend = 2, 
+               y = 25, yend = 25) + 
+  annotate(geom = "text", label = "**", size = 6,
+           x = 1.5, y = 25.5) +
+  geom_segment(x = 1, xend = 3, 
+               y = 23, yend = 23) + 
+  annotate(geom = "text", label = "*", size = 6,
+           x = 2, y = 23.5) +
+  coord_cartesian(ylim = c(9, 27)) -> plarich; plarich
+
+df %>% 
+ggplot(aes(x=factor(phase, levels=c("P", "B", "M")), 
+             y=Shannon, 
+             fill=factor(phase, levels=c("P", "B", "M")), 
+             color=factor(phase, levels=c("P", "B", "M")))) + 
+  theme_classic() + 
+  geom_boxplot(linewidth = 0.6, alpha = 1, outlier.shape = NA, width = 0.5) + 
+  geom_jitter(size = 2, shape = 21, stroke = 1, alpha=0.5,
+              position = position_jitter(height = 0, width = 0.3)) +
+  theme(legend.position = "none", 
+        axis.title.x = element_blank()) + 
+  scale_fill_brewer(palette = "Greens") + 
+  scale_color_manual(values = rep("black", times=length(unique(plants@sam_data$phase)))) +
+  ylab("Shannon") +
+  ggtitle(" ") +
+  geom_segment(x = 1, xend = 2, 
+               y = 3.25, yend = 3.25) + 
+  annotate(geom = "text", label = "**", size = 6,
+           x = 1.5, y = 3.3) +
+  geom_segment(x = 1, xend = 3, 
+               y = 3, yend = 3) + 
+  annotate(geom = "text", label = ".", size = 6,
+           x = 2, y = 3.2) +
+  coord_cartesian(ylim = c(1.5, 3.4)) -> plasha; plasha
+
+ggarrange(plarich, plasha, nrow = 2) -> plants_alphaplot; plants_alphaplot
+```
+
+
+malaise traps
+
+```{r}
+# load and normalise phyloseq object:
+insects <- readRDS(here("data/insects/heathland-fire-insects.RDS")); insects
+insects <- prune_taxa(taxa_sums(insects) >0, insects); insects
+
+inrar <- rarefy_even_depth(insects, 
+                           rngseed = 123,
+                           replace = F, 
+                           trimOTUs = T, 
+                           sample.size = min(sample_sums(insects))); insects; inrar
+
+# calculate alpha diversity measures and find medians and IQR: 
+tibble(
+  estimate_richness(inrar,
+    measures = c("Observed", "Shannon")
+  ),
+  data.frame(inrar@sam_data)
+) %>%
+  select(Observed, Shannon, phase) %>%
+  group_by(phase) %>%
+  mutate(
+    q1_richness = quantile(Observed)[2],
+    med_richness = quantile(Observed)[3],
+    q3_richness = quantile(Observed)[4],
+  ) %>%
+  mutate(
+    q1_shannon = quantile(Shannon)[2],
+    med_shannon = quantile(Shannon)[3],
+    q3_shannon = quantile(Shannon)[4],
+  ) %>%
+  select(-c(Observed, Shannon)) %>%
+  distinct() %>%
+  arrange(phase = factor(
+    phase,
+    levels = c("P", "B", "M")
+  )) -> alpha_stats
+
+# test whether differences in alpha diversity are significant between phases: 
+tibble(
+  estimate_richness(inrar,
+                    measures = c("Observed", "Shannon")
+  ),
+  data.frame(inrar@sam_data)
+) -> df
+
+# richness
+mod <- glm(Observed ~ phase, data = df); summary(mod)
+emmeans(mod, pairwise ~ phase)
+
+# shannon
+hist(df$Shannon, breaks = 30); shapiro.test(df$Shannon)
+mod <- glm(Shannon ~ phase, data = df); summary(mod)
+emmeans(mod, pairwise ~ phase)
+
+df %>% 
+ggplot(aes(x=factor(phase, levels=c("P", "B", "M")), 
+             y=Observed, 
+             fill=factor(phase, levels=c("P", "B", "M")), 
+             color=factor(phase, levels=c("P", "B", "M")))) + 
+  theme_classic() + 
+  geom_point(size = 2, shape = 21, stroke = 1, alpha=0.8) +
+  theme(legend.position = "none", 
+        axis.title.x = element_blank(), 
+        axis.text.x = element_text(color = "white"), 
+        axis.ticks.x = element_blank()) + 
+  scale_fill_manual(values = c("#FDE0EF", "#DE77AE", "#C51B7D")) +
+  scale_color_manual(values = rep("black", times=length(unique(inrar@sam_data$phase)))) +
+  ylab(" ") + 
+  ggtitle("Malaise traps") -> inrich; inrich
+
+df %>% 
+ggplot(aes(x=factor(phase, levels=c("P", "B", "M")), 
+             y=Shannon, 
+             fill=factor(phase, levels=c("P", "B", "M")), 
+             color=factor(phase, levels=c("P", "B", "M")))) + 
+  theme_classic() +
+  geom_point(size = 2, shape = 21, stroke = 1, alpha=0.8) +
+  theme(legend.position = "none", 
+        axis.title.x = element_blank(), 
+        plot.title = element_text(color = "white")) + 
+  scale_fill_manual(values = c("#FDE0EF", "#DE77AE", "#C51B7D")) +
+  scale_color_manual(values = rep("black", times=length(unique(inrar@sam_data$phase)))) +
+  ylab(" ") + 
+  ggtitle(" e") -> insha; insha
+
+ggarrange(inrich, insha, nrow = 2) -> malaise_alphaplot; malaise_alphaplot
+```
+
+
+ground dwelling arthropods
+
+```{r}
+# load and normalise phyloseq object:
+ground <- readRDS(here("data/walking_arthropods/heathland-fire-walking-arthropods.RDS")); walk
+
+groundrar <- rarefy_even_depth(ground, 
+                            rngseed = 123,
+                            replace = F, 
+                            trimOTUs = T, 
+                            sample.size = 10); ground; groundrar
+
+# calculate alpha diversity measures and find medians and IQR: 
+tibble(
+  estimate_richness(groundrar,
+    measures = c("Observed", "Shannon")
+  ),
+  data.frame(groundrar@sam_data)
+) %>%
+  select(Observed, Shannon, phase) %>%
+  group_by(phase) %>%
+  mutate(
+    q1_richness = quantile(Observed)[2],
+    med_richness = quantile(Observed)[3],
+    q3_richness = quantile(Observed)[4],
+  ) %>%
+  mutate(
+    q1_shannon = quantile(Shannon)[2],
+    med_shannon = quantile(Shannon)[3],
+    q3_shannon = quantile(Shannon)[4],
+  ) %>%
+  select(-c(Observed, Shannon)) %>%
+  distinct() %>%
+  arrange(phase = factor(
+    phase,
+    levels = c("P", "B", "M")
+  )) -> alpha_stats
+
+# test whether differences in alpha diversity are significant between phases: 
+tibble(
+  estimate_richness(groundrar,
+                    measures = c("Observed", "Shannon")
+  ),
+  data.frame(groundrar@sam_data)
+) -> df
+
+# richness
+var(df$Observed); mean(df$Observed) # data is not overdispersed
+mod <- glm(Observed ~ phase, data = df, family = poisson); summary(mod)
+emmeans(mod, pairwise ~ phase)
+
+# shannon
+hist(df$Shannon, breaks = 30); shapiro.test(df$Shannon)
+var(df$Shannon); mean(df$Shannon) # data is not overdispersed
+mod <- glm(Shannon ~ phase, data = df); summary(mod)
+emmeans(mod, pairwise ~ phase)
+
+df %>% 
+ggplot(aes(x=factor(phase, levels=c("P", "B", "M")), 
+             y=Observed, 
+             fill=factor(phase, levels=c("P", "B", "M")), 
+             color=factor(phase, levels=c("P", "B", "M")))) + 
+  theme_classic() + 
+  geom_boxplot(linewidth = 0.6, alpha = 1, outlier.shape = NA, width = 0.5) + 
+  geom_jitter(size = 2, shape = 21, stroke = 1, alpha=0.5,
+              position = position_jitter(height = 0, width = 0.3)) +
+  theme(legend.position = "none", 
+        axis.title.x = element_blank(), 
+        axis.text.x = element_text(color = "white"), 
+        axis.ticks.x = element_blank()) + 
+  scale_fill_manual(values = c("tan", "tan3", "tan4")) + 
+  scale_color_manual(values = rep("black", times=length(unique(groundrar@sam_data$phase)))) +
+  ylab(" ") +
+  ggtitle("Pitfall traps") -> grorich; grorich
+
+df %>% 
+ggplot(aes(x=factor(phase, levels=c("P", "B", "M")), 
+             y=Shannon, 
+             fill=factor(phase, levels=c("P", "B", "M")), 
+             color=factor(phase, levels=c("P", "B", "M")))) + 
+  theme_classic() + 
+  geom_boxplot(linewidth = 0.6, alpha = 1, outlier.shape = NA, width = 0.5) + 
+  geom_jitter(size = 2, shape = 21, stroke = 1, alpha=0.5,
+              position = position_jitter(height = 0, width = 0.3)) +
+  theme(legend.position = "none", 
+        axis.title.x = element_blank()) + 
+  scale_fill_manual(values = c("tan", "tan3", "tan4")) + 
+  scale_color_manual(values = rep("black", times=length(unique(groundrar@sam_data$phase)))) +
+  ylab(" ") +
+  ggtitle(" ") -> grosha; grosha
+
+ggarrange(grorich, grosha, nrow = 2) -> ground_alphaplot; ground_alphaplot
+```
+
+
+nematodes
+
+```{r}
+# load and normalise phyloseq object:
+nematodes <- readRDS(here("data/nematodes/heathland-fire-nematodes.RDS")); nematodes
+nematodes <- prune_taxa(taxa_sums(nematodes) > 0, nematodes); nematodes
+
+nemrar <- rarefy_even_depth(nematodes, 
+                            rngseed = 123,
+                            replace = F, 
+                            trimOTUs = T, 
+                            sample.size = min(sample_sums(nematodes))); nematodes; nemrar
+
+# calculate alpha diversity measures and find medians and IQR: 
+tibble(
+  estimate_richness(nemrar,
+    measures = c("Observed", "Shannon")
+  ),
+  data.frame(nemrar@sam_data)
+) %>%
+  mutate(phase = sub("Pioner",  "P", phase),
+         phase = sub("Bygg",  "B", phase),
+         phase = sub("Moden",  "M", phase)) %>% 
+  select(Observed, Shannon, phase) %>%
+  group_by(phase) %>%
+  mutate(
+    q1_richness = quantile(Observed)[2],
+    med_richness = quantile(Observed)[3],
+    q3_richness = quantile(Observed)[4],
+  ) %>%
+  mutate(
+    q1_shannon = quantile(Shannon)[2],
+    med_shannon = quantile(Shannon)[3],
+    q3_shannon = quantile(Shannon)[4],
+  ) %>%
+  select(-c(Observed, Shannon)) %>%
+  distinct() %>%
+  arrange(phase = factor(
+    phase,
+    levels = c("P", "B", "M")
+  )) -> alpha_stats
+
+# test whether differences in alpha diversity are significant between phases: 
+tibble(
+  estimate_richness(nemrar,
+                    measures = c("Observed", "Shannon")
+  ),
+  data.frame(nemrar@sam_data)
+) -> df
+
+# richness
+var(df$Observed); mean(df$Observed) # data is not overdispersed
+mod <- glm(Observed ~ phase, data = df, family = poisson); summary(mod)
+emmeans(mod, pairwise ~ phase)
+
+# shannon
+hist(df$Shannon, breaks = 30); shapiro.test(df$Shannon)
+var(df$Shannon); mean(df$Shannon) # data is not overdispersed
+mod <- glm(Shannon ~ phase, data = df, family = gaussian); summary(mod)
+emmeans(mod, pairwise ~ phase)
+
+df %>% 
+  mutate(phase = sub("Pioner",  "P", phase),
+         phase = sub("Bygg",  "B", phase),
+         phase = sub("Moden",  "M", phase)) %>% 
+ggplot(aes(x=factor(phase, levels=c("P", "B", "M")), 
+             y=Observed, 
+             fill=factor(phase, levels=c("P", "B", "M")), 
+             color=factor(phase, levels=c("P", "B", "M")))) + 
+  theme_classic() + 
+  geom_boxplot(linewidth = 0.6, alpha = 1, outlier.shape = NA, width = 0.5) + 
+  geom_jitter(size = 2, shape = 21, stroke = 1, alpha=0.5,
+              position = position_jitter(height = 0, width = 0.3)) +
+  theme(legend.position = "none", 
+        axis.title.x = element_blank(), 
+        axis.text.x = element_text(color = "white"), 
+        axis.ticks.x = element_blank()) + 
+  scale_fill_manual(values = c("#F7FBFF", "#9ECAE1", "#08519C")) + 
+  scale_color_manual(values = rep("black", times=length(unique(groundrar@sam_data$phase)))) +
+  ylab(" ") +
+  ggtitle("Nematodes") -> nemrich; nemrich
+
+df %>% 
+  mutate(phase = sub("Pioner",  "P", phase),
+         phase = sub("Bygg",  "B", phase),
+         phase = sub("Moden",  "M", phase)) %>% 
+ggplot(aes(x=factor(phase, levels=c("P", "B", "M")), 
+             y=Shannon, 
+             fill=factor(phase, levels=c("P", "B", "M")), 
+             color=factor(phase, levels=c("P", "B", "M")))) + 
+  theme_classic() + 
+  geom_boxplot(linewidth = 0.6, alpha = 1, outlier.shape = NA, width = 0.5) + 
+  geom_jitter(size = 2, shape = 21, stroke = 1, alpha=0.5,
+              position = position_jitter(height = 0, width = 0.3)) +
+  theme(legend.position = "none", 
+        axis.title.x = element_blank()) + 
+  scale_fill_manual(values = c("#F7FBFF", "#9ECAE1", "#08519C")) +
+  scale_color_manual(values = rep("black", times=length(unique(groundrar@sam_data$phase)))) +
+  ylab(" ") +
+  ggtitle(" ") +
+  geom_segment(x = 2, xend = 3, 
+               y = 2.3, yend = 2.3) + 
+  annotate(geom = "text", label = "**", size = 6,
+           x = 2.5, y = 2.35) +
+  coord_cartesian(ylim = c(0.8, 2.4)) -> nemsha; nemsha
+
+ggarrange(nemrich, nemsha, nrow = 2) -> nem_alphaplot; nem_alphaplot
+```
+
+
+fungi
+
+```{r}
+# load and normalise phyloseq object:
+fungi <- readRDS(here("data/fungi/heathland-fire-fungi.RDS")); fungi
+fungi <- prune_taxa(taxa_sums(fungi)>0, fungi); fungi
+
+funrar <- rarefy_even_depth(fungi, 
+                            rngseed = 123,
+                            replace = F, 
+                            trimOTUs = T, 
+                            sample.size = min(sample_sums(fungi))); fungi; funrar
+
+# calculate alpha diversity measures and find medians and IQR: 
+tibble(
+  estimate_richness(funrar,
+    measures = c("Observed", "Shannon")
+  ),
+  data.frame(funrar@sam_data)
+) %>%
+  mutate(phase = sub("Pioner",  "P", phase),
+         phase = sub("Bygg",  "B", phase),
+         phase = sub("Moden",  "M", phase)) %>% 
+  select(Observed, Shannon, phase) %>%
+  group_by(phase) %>%
+  mutate(
+    q1_richness = quantile(Observed)[2],
+    med_richness = quantile(Observed)[3],
+    q3_richness = quantile(Observed)[4],
+  ) %>%
+  mutate(
+    q1_shannon = quantile(Shannon)[2],
+    med_shannon = quantile(Shannon)[3],
+    q3_shannon = quantile(Shannon)[4],
+  ) %>%
+  select(-c(Observed, Shannon)) %>%
+  distinct() %>%
+  arrange(phase = factor(
+    phase,
+    levels = c("P", "B", "M")
+  )) -> alpha_stats
+
+# test whether differences in alpha diversity are significant between phases: 
+tibble(
+  estimate_richness(funrar,
+                    measures = c("Observed", "Shannon")
+  ),
+  data.frame(funrar@sam_data)
+) -> df
+
+# richness
+var(df$Observed); mean(df$Observed) # data is overdispersed
+mod <- glm(Observed ~ phase, data = df, family = quasipoisson); summary(mod)
+emmeans(mod, pairwise ~ phase)
+
+# shannon
+hist(df$Shannon, breaks = 30); shapiro.test(df$Shannon)
+var(df$Shannon); mean(df$Shannon) # data is not overdispersed
+mod <- glm(Shannon ~ phase, data = df, family = gaussian); summary(mod)
+emmeans(mod, pairwise ~ phase)
+
+df %>% 
+  mutate(phase = sub("Pioner",  "P", phase),
+         phase = sub("Bygg",  "B", phase),
+         phase = sub("Moden",  "M", phase)) %>% 
+ggplot(aes(x=factor(phase, levels=c("P", "B", "M")), 
+             y=Observed, 
+             fill=factor(phase, levels=c("P", "B", "M")), 
+             color=factor(phase, levels=c("P", "B", "M")))) + 
+  theme_classic() + 
+  geom_boxplot(linewidth = 0.6, alpha = 1, outlier.shape = NA, width = 0.5) + 
+  geom_jitter(size = 2, shape = 21, stroke = 1, alpha=0.5,
+              position = position_jitter(height = 0, width = 0.3)) +
+  theme(legend.position = "none", 
+        axis.title.x = element_blank(), 
+        axis.text.x = element_text(color = "white"), 
+        axis.ticks.x = element_blank()) + 
+  scale_fill_manual(values = c("#DADAEB", "#9E9AC8", "#54278F")) +
+  scale_color_manual(values = rep("black", times=length(unique(funrar@sam_data$phase)))) +
+  ylab(" ") +
+  ggtitle("Fungi") -> funrich; funrich
+
+df %>% 
+  mutate(phase = sub("Pioner",  "P", phase),
+         phase = sub("Bygg",  "B", phase),
+         phase = sub("Moden",  "M", phase)) %>% 
+ggplot(aes(x=factor(phase, levels=c("P", "B", "M")), 
+             y=Shannon, 
+             fill=factor(phase, levels=c("P", "B", "M")), 
+             color=factor(phase, levels=c("P", "B", "M")))) + 
+  theme_classic() + 
+  geom_boxplot(linewidth = 0.6, alpha = 1, outlier.shape = NA, width = 0.5) + 
+  geom_jitter(size = 2, shape = 21, stroke = 1, alpha=0.5,
+              position = position_jitter(height = 0, width = 0.3)) +
+  theme(legend.position = "none", 
+        axis.title.x = element_blank()) + 
+  scale_fill_manual(values = c("#DADAEB", "#9E9AC8", "#54278F")) +
+  scale_color_manual(values = rep("black", times=length(unique(funrar@sam_data$phase)))) +
+  ylab(" ") +
+  ggtitle(" ") +
+  geom_segment(x = 1, xend = 3, 
+               y = 4.85, yend = 4.85) + 
+  annotate(geom = "text", label = ".", size = 6,
+           x = 2, y = 4.95) +
+  geom_segment(x = 2, xend = 3, 
+               y = 4.7, yend = 4.7) + 
+  annotate(geom = "text", label = ".", size = 6,
+           x = 2.5, y = 4.8) +
+  coord_cartesian(ylim = c(3.8, 5)) -> funsha; funsha
+
+ggarrange(funrich, funsha, nrow = 2) -> fun_alphaplot; fun_alphaplot
+```
+
+
+bacteria
+
+```{r}
+# load and normalise phyloseq object:
+bacteria <- readRDS(here("data/bacteria/heathland-fire-bacteria.RDS")); bacteria
+sample_sums(bacteria)
+
+bacrar <- rarefy_even_depth(bacteria, 
+                            rngseed = 123,
+                            replace = F, 
+                            trimOTUs = T, 
+                            sample.size = 18963); bacteria; bacrar
+
+# calculate alpha diversity measures and find medians and IQR: 
+tibble(
+  estimate_richness(bacrar,
+    measures = c("Observed", "Shannon")
+  ),
+  data.frame(bacrar@sam_data)
+) %>%
+  mutate(phase = sub("Pioner",  "P", phase),
+         phase = sub("Bygg",  "B", phase),
+         phase = sub("Moden",  "M", phase)) %>% 
+  select(Observed, Shannon, phase) %>%
+  group_by(phase) %>%
+  mutate(
+    q1_richness = quantile(Observed)[2],
+    med_richness = quantile(Observed)[3],
+    q3_richness = quantile(Observed)[4],
+  ) %>%
+  mutate(
+    q1_shannon = quantile(Shannon)[2],
+    med_shannon = quantile(Shannon)[3],
+    q3_shannon = quantile(Shannon)[4],
+  ) %>%
+  select(-c(Observed, Shannon)) %>%
+  distinct() %>%
+  arrange(phase = factor(
+    phase,
+    levels = c("P", "B", "M")
+  )) -> alpha_stats
+
+# test whether differences in alpha diversity are significant between phases: 
+tibble(
+  estimate_richness(bacrar,
+                    measures = c("Observed", "Shannon")
+  ),
+  data.frame(bacrar@sam_data)
+) -> df
+
+# richness
+var(df$Observed); mean(df$Observed) # data is not overdispersed
+mod <- glm(Observed ~ phase, data = df, family = quasipoisson); summary(mod)
+emmeans(mod, pairwise ~ phase)
+
+# shannon
+hist(df$Shannon, breaks = 30); shapiro.test(df$Shannon)
+var(df$Shannon); mean(df$Shannon) # data is not overdispersed
+mod <- glm(Shannon ~ phase, data = df, family = gaussian); summary(mod)
+emmeans(mod, pairwise ~ phase)
+
+df %>% 
+  mutate(phase = sub("Pioner",  "P", phase),
+         phase = sub("Bygg",  "B", phase),
+         phase = sub("Moden",  "M", phase)) %>% 
+ggplot(aes(x=factor(phase, levels=c("P", "B", "M")), 
+             y=Observed, 
+             fill=factor(phase, levels=c("P", "B", "M")), 
+             color=factor(phase, levels=c("P", "B", "M")))) + 
+  theme_classic() + 
+  geom_boxplot(linewidth = 0.6, alpha = 1, outlier.shape = NA, width = 0.5) + 
+  geom_jitter(size = 2, shape = 21, stroke = 1, alpha=0.5,
+              position = position_jitter(height = 0, width = 0.3)) +
+  theme(legend.position = "none", 
+        axis.title.x = element_blank(), 
+        axis.text.x = element_text(color = "white"), 
+        axis.ticks.x = element_blank()) + 
+  scale_fill_manual(values = c("#FEE0D2", "#FC9272", "#CB181D")) + 
+  scale_color_manual(values = rep("black", times=length(unique(funrar@sam_data$phase)))) +
+  ylab(" ") +
+  ggtitle("Bacteria") -> bacrich; bacrich
+
+df %>% 
+  mutate(phase = sub("Pioner",  "P", phase),
+         phase = sub("Bygg",  "B", phase),
+         phase = sub("Moden",  "M", phase)) %>% 
+ggplot(aes(x=factor(phase, levels=c("P", "B", "M")), 
+             y=Shannon, 
+             fill=factor(phase, levels=c("P", "B", "M")), 
+             color=factor(phase, levels=c("P", "B", "M")))) + 
+  theme_classic() + 
+  geom_boxplot(linewidth = 0.6, alpha = 1, outlier.shape = NA, width = 0.5) + 
+  geom_jitter(size = 2, shape = 21, stroke = 1, alpha=0.5,
+              position = position_jitter(height = 0, width = 0.3)) +
+  theme(legend.position = "none", 
+        axis.title.x = element_blank()) + 
+  scale_fill_manual(values = c("#FEE0D2", "#FC9272", "#CB181D")) + 
+  scale_color_manual(values = rep("black", times=length(unique(funrar@sam_data$phase)))) +
+  ylab(" ") +
+  ggtitle(" ") -> bacsha; bacsha
+
+ggarrange(bacrich, bacsha, nrow = 2) -> bac_alphaplot; bac_alphaplot
+```
+
+
+combine plots
+
+```{r}
+ggarrange(plants_alphaplot, malaise_alphaplot, ground_alphaplot, nem_alphaplot, fun_alphaplot, bac_alphaplot, 
+          nrow = 1)
+```
+
+
