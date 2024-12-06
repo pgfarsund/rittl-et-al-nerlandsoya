@@ -349,8 +349,12 @@ cleaning pitfall traps
   "Order" = colnames(pit)) |> 
    filter(Order != "phase")) 
 
+tax <- tax_table(tax)
+colnames(tax) <- "Order"
+(taxa_names(tax) <- tax[,"Order"])
+
 # assemble phyloseq object
-ps <- phyloseq(otu, sam, tax)
+(ps <- phyloseq(otu, sam, tax))
 
 ```
 

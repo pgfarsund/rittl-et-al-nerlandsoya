@@ -17,828 +17,403 @@ library(here)
 library(phyloseq)
 library(tidyverse)
 library(psadd)
+library(ggpubr)
 #
 ```
 
 
-# bacteria
+function returning plot
 ```{r}
+plot_top_relab <- function(ps, # a phyloseq object
+                           taxlevel, # the taxonomic level you want to plot
+                           how_many_taxa, # how many taxa should not be grouped as "Other"?
+                           group # set to "phase"
+) {
+  # load a few packages
+  library(tidyverse)
+  library(RColorBrewer)
 
-bacteria <- readRDS(here("data/bacteria/heathland-fire-bacteria.RDS")); bacteria
-sample_sums(bacteria)
+  # use this object to calculate relative abundance at the phylum level
+  glom <- tax_glom(ps, taxrank = taxlevel, NArm = F)
 
-# normalize the number of reads per sample: 
-bacrar <- rarefy_even_depth(bacteria, 
-                            rngseed = 123,
-                            replace = F, 
-                            trimOTUs = T, 
-                            sample.size = 18963); bacteria; bacrar
+  # record the names of the top ntaxa taxa
+  top <- names(sort(taxa_sums(glom), decreasing = TRUE))[1:how_many_taxa]
 
-# use this object to calculate relative abundance at the phylum level: 
-bacglom <- tax_glom(bacrar, taxrank = "Phylum", NArm = T); bacrar; bacglom
+  # remove taxa that are not among the top ntaxa taxa
+  top <- prune_taxa(top, glom)
 
-bactop <- names(sort(taxa_sums(bacglom), decreasing = TRUE))[1:10]; bactop # get top10 names
-bactop <- prune_taxa(bactop, bacglom); bactop; sum(taxa_sums(bactop))
+  # remove the top ntaxa
+  bottom <- names(sort(taxa_sums(glom), decreasing = FALSE))[1:c(ntaxa(glom) - ntaxa(top))]
 
-bacbottom <- names(sort(taxa_sums(bacglom), decreasing = FALSE))[1:c(ntaxa(bacglom)-ntaxa(bactop))]
+  # remove the top ntaxa taxa
+  bottom <- prune_taxa(bottom, glom)
 
-bacbottom <- prune_taxa(bacbottom, bacglom); bacbottom; sum(taxa_sums(bacbottom))
+  # group bottom taxa as "Other"
+  bottom@tax_table[, 1:ncol(bottom@tax_table)] <- "Other"
 
-bacbottom@tax_table[,"Kingdom"] = "Other"
+  # agglomorate bottom taxa
+  bottom <- tax_glom(bottom, taxrank = taxlevel, NArm = F)
 
-bacbottom@tax_table[,"Phylum"] = "Other"
+  # merge the top and bottom objects
+  top <- merge_phyloseq(top, bottom)
 
-bacbottom; bacbottom <- tax_glom(bacbottom, taxrank = "Phylum", NArm = TRUE); bacbottom
-#
+  # melt the ps object to a data frame
+  df <- psmelt(top) %>%
+    rename("taxlevel" = taxlevel)
 
-bactop <- merge_phyloseq(bactop, bacbottom)
-#bactop <- merge_samples(bactop, group = "phase", fun = mean); bactop
-#bactop <- transform_sample_counts(bactop, function(x) x / sum(x)); bactop; rowSums(bactop@otu_table)
-df <- psmelt(bactop) %>% 
-  rename("taxlevel" = "Phylum")
+  # replace NA's with "Unassigned"
+  # df$taxlevel[is.na(df$taxlevel)] <- "Unassigned"
 
-# We need a custom color palette with 11 colors:
-library(RColorBrewer)
-custcol <- c(brewer.pal(name = "Paired", n = 10), "grey")
+  # make a custom color palette with ntaxa colors + grey for "Other":
+  custcol <- rep(brewer.pal(12, "Paired"), times = 100)
+  # custcol <- c(custcol[1:how_many_taxa+1], "grey")
 
-# make stuff for fill:
-bacfillvector <- data.frame(df$taxlevel, df$Abundance) %>% 
-  filter(df.taxlevel!="Other")
+  # make stuff for fill:
+  fillvector <- data.frame(df$taxlevel, df$Abundance) |>
+    filter(df.taxlevel != "Other")
 
-bacfillvector <- aggregate(bacfillvector$df.Abundance, by=list(bacfillvector$df.taxlevel), FUN = sum)
+  fillvector <- aggregate(fillvector$df.Abundance,
+    by = list(fillvector$df.taxlevel), FUN = sum
+  )
 
-colnames(bacfillvector) <- c("df.taxlevel", "df.Abundance")
+  colnames(fillvector) <- c("df.taxlevel", "df.Abundance")
 
-bacfillvector <- bacfillvector[order(bacfillvector$df.Abundance, decreasing = TRUE),]
+  # we use the following vector to sort the taxa in barplot
+  fillvector <- fillvector[order(fillvector$df.Abundance, decreasing = TRUE), ]
+  fillvector <- unique(fillvector$df.taxlevel)
 
-bacfillvector = unique(bacfillvector$df.taxlevel)
-#############################
-# P-phase: 
-df %>% 
-  mutate(phase = sub("Pioner", "P", phase)) %>% 
-  filter(phase == "P") %>% 
-  select(phase, 
-         taxlevel, 
-         Abundance) %>% 
-  mutate(relab = Abundance / sum(Abundance)) %>% 
-  mutate(p_relab = sum(relab), .by = taxlevel) %>% 
-  select(taxlevel, 
-         p_relab) %>% 
-  distinct() %>% 
-  arrange(-p_relab) -> ptax
-
-# B-phase
-df %>% 
-  mutate(phase = sub("Bygg", "B", phase)) %>% 
-  filter(phase == "B") %>% 
-  select(phase, 
-         taxlevel, 
-         Abundance) %>% 
-  mutate(relab = Abundance / sum(Abundance)) %>% 
-  mutate(b_relab = sum(relab), .by = taxlevel) %>% 
-  select(taxlevel, 
-         b_relab) %>% 
-  distinct() %>% 
-  arrange(-b_relab) -> btax
-
-# M-phase
-df %>% 
-  mutate(phase = sub("Moden", "M", phase)) %>% 
-  filter(phase == "M") %>% 
-  select(phase, 
-         taxlevel, 
-         Abundance) %>% 
-  mutate(relab = Abundance / sum(Abundance)) %>% 
-  mutate(m_relab = sum(relab), .by = taxlevel) %>% 
-  select(taxlevel, 
-         m_relab) %>% 
-  distinct() %>% 
-  arrange(-m_relab) -> mtax
-
-ptax %>% 
-  left_join(btax, by = c("taxlevel")) %>% 
-  left_join(mtax, by = "taxlevel") %>% 
-  rename("Phylum" = "taxlevel") -> bactax
-
-bactax %>% 
-  pivot_longer(cols = c(p_relab, 
-                        b_relab, 
-                        m_relab), 
-               names_to = "phase", 
-               values_to = "relab") %>% 
-  mutate(phase = recode(phase, 
-                        "p_relab" = "P", 
-                        "b_relab" = "B", 
-                        "m_relab" = "M")) %>% 
-  ggplot(aes(x=factor(phase, levels = rev(c("P", "B", "M"))), 
-             y=relab, 
-             fill=factor(Phylum, levels = c(bacfillvector, "Other")),
-             color=factor(Phylum, levels = c(bacfillvector, "Other")))) + 
-  theme_grey(base_size = 18) +
-  geom_col(width = 0.75) + 
-  scale_fill_manual(values=custcol) +
-  scale_color_manual(values = rep("black", times=length(unique(df$taxlevel)))) + 
-  ylab("Relative abundance (%)") + 
-  labs(title = "Bacteria") +
-  scale_y_continuous(labels = scales::percent_format()) + 
-  guides(fill = guide_legend(title="Phylum", nrow = 4), 
-         color = guide_legend(title="Phylum", nrow = 4)) +
-  theme(axis.title.y = element_blank(),
-        axis.title.x = element_blank(),
-        legend.position = "bottom", 
-        legend.text = element_text()) +
-  coord_flip() -> bactaxplot; bactaxplot 
-
+  # now we calculate 100 % relative abundance for each group individually
+  df |>
+    reframe(abundance = sum(Abundance), .by = c(phase, taxlevel)) |>
+    group_by(phase) |>
+    mutate(relab = abundance / sum(abundance)) |>
+    ungroup() |>
+    mutate(test = sum(relab)) |>
+    mutate(phase = case_match(
+      phase,
+      c("P", "Pioner", "Pioneer") ~ "P",
+      c("B", "Bygg") ~ "B",
+      c("M", "Moden") ~ "M"
+    )) |>
+    # now we can make the figure
+    ggplot(aes(
+      x = factor(phase, levels = c("M", "B", "P")),
+      y = relab,
+      fill = factor(taxlevel, levels = c(fillvector, "Other")),
+      color = factor(taxlevel, levels = c(fillvector, "Other"))
+    )) +
+    # theme_grey(base_size = 18) +
+    theme_grey() +
+    geom_col(width = 0.75) +
+    scale_fill_manual(values = custcol) +
+    scale_color_manual(values = rep("black", times = how_many_taxa + 1)) +
+    scale_y_continuous(labels = scales::percent_format()) +
+    guides(
+      fill = guide_legend(title = taxlevel, nrow = 4),
+      color = guide_legend(title = taxlevel, nrow = 4)
+    ) +
+    theme(
+      axis.title.y = element_blank(),
+      axis.title.x = element_blank(),
+      legend.position = "bottom",
+      legend.text = element_text()
+    ) +
+    coord_flip()
+}
 ```
 
 
-# fungi
+function returning dataframe
 ```{r}
+get_top_relab <- function(ps, # a phyloseq object
+                          taxlevel, # the taxonomic level you want to plot
+                          how_many_taxa, # how many taxa should not be grouped as "Other"?
+                          group # should the data be grouped by a variable?
+) {
+  # load a few packages
+  library(tidyverse)
+  library(RColorBrewer)
 
-fungi <- readRDS(here("data/fungi/heathland-fire-fungi.RDS")); fungi
-fungi <- prune_taxa(taxa_sums(fungi)>0, fungi); fungi
+  # use this object to calculate relative abundance at the phylum level
+  glom <- tax_glom(ps, taxrank = taxlevel, NArm = F)
 
-# normalize the number of reads per sample: 
-funrar <- rarefy_even_depth(fungi, 
-                            rngseed = 123,
-                            replace = F, 
-                            trimOTUs = T, 
-                            sample.size = min(sample_sums(fungi))); fungi; funrar
+  # record the names of the top ntaxa taxa
+  top <- names(sort(taxa_sums(glom), decreasing = TRUE))[1:how_many_taxa]
 
-# use this object to calculate relative abundance at the phylum level: 
-glom <- tax_glom(funrar, taxrank = "Class", NArm = T); funrar; glom
+  # remove taxa that are not among the top ntaxa taxa
+  top <- prune_taxa(top, glom)
 
-top <- names(sort(taxa_sums(glom), decreasing = TRUE))[1:10]; top # get top10 names
-top <- prune_taxa(top, glom); top; sum(taxa_sums(top))
+  # remove the top ntaxa
+  bottom <- names(sort(taxa_sums(glom), decreasing = FALSE))[1:c(ntaxa(glom) - ntaxa(top))]
 
-bottom <- names(sort(taxa_sums(glom), decreasing = F))[1:c(ntaxa(glom)-ntaxa(top))]
+  # remove the top ntaxa taxa
+  bottom <- prune_taxa(bottom, glom)
 
-bottom <- prune_taxa(bottom, glom); bottom; sum(taxa_sums(bottom))
+  # group bottom taxa as "Other"
+  bottom@tax_table[, 1:ncol(bottom@tax_table)] <- "Other"
 
-bottom@tax_table[,"Kingdom"] = "Other"
-bottom@tax_table[,"Phylum"] = "Other"
-bottom@tax_table[,"Class"] = "Other"
+  # agglomorate bottom taxa
+  bottom <- tax_glom(bottom, taxrank = taxlevel, NArm = F)
 
-bottom; bottom = tax_glom(bottom, taxrank = "Class", NArm = TRUE); bottom # 
-#
+  # merge the top and bottom objects
+  top <- merge_phyloseq(top, bottom)
 
-top <- merge_phyloseq(top, bottom)
-sample_data(top) <- sample_data(funrar)
-df <- psmelt(top) %>% 
-  rename("taxlevel" = "Class") %>% 
-  mutate(taxlevel = sub("c__", "", taxlevel)) 
-
-# We need a custom color palette with 11 colors:
-library(RColorBrewer)
-custcol <- c(brewer.pal(name = "Paired", n = 10), "grey")
-
-# make stuff for fill:
-funfillvector <- data.frame(df$taxlevel, df$Abundance) %>% 
-  filter(df.taxlevel!="Other")
-
-funfillvector <- aggregate(funfillvector$df.Abundance, by=list(funfillvector$df.taxlevel), FUN = sum)
-
-colnames(funfillvector) <- c("df.taxlevel", "df.Abundance")
-
-funfillvector <- funfillvector[order(funfillvector$df.Abundance, decreasing = TRUE),]
-
-funfillvector = unique(funfillvector$df.taxlevel)
-
-# P-phase: 
-df %>% 
-  mutate(phase = sub("Pioner", "P", phase)) %>% 
-  filter(phase == "P") %>% 
-  select(phase, 
-         taxlevel, 
-         Abundance) %>% 
-  mutate(relab = Abundance / sum(Abundance)) %>% 
-  mutate(p_relab = sum(relab), .by = taxlevel) %>% 
-  select(taxlevel, 
-         p_relab) %>% 
-  distinct() %>% 
-  arrange(-p_relab) -> ptax; ptax
-
-# B-phase
-df %>% 
-  mutate(phase = sub("Bygg", "B", phase)) %>% 
-  filter(phase == "B") %>% 
-  select(phase, 
-         taxlevel, 
-         Abundance) %>% 
-  mutate(relab = Abundance / sum(Abundance)) %>% 
-  mutate(b_relab = sum(relab), .by = taxlevel) %>% 
-  select(taxlevel, 
-         b_relab) %>% 
-  distinct() %>% 
-  arrange(-b_relab) -> btax; btax
-
-# M-phase
-df %>% 
-  mutate(phase = sub("Moden", "M", phase)) %>% 
-  filter(phase == "M") %>% 
-  select(phase, 
-         taxlevel, 
-         Abundance) %>% 
-  mutate(relab = Abundance / sum(Abundance)) %>% 
-  mutate(m_relab = sum(relab), .by = taxlevel) %>% 
-  select(taxlevel, 
-         m_relab) %>% 
-  distinct() %>% 
-  arrange(-m_relab) -> mtax; mtax
-
-ptax %>% 
-  left_join(btax, by = c("taxlevel")) %>% 
-  left_join(mtax, by = "taxlevel") %>% 
-  rename("Class" = "taxlevel") -> funtax
-#
-
-funtax %>% 
-  pivot_longer(cols = c(p_relab, 
-                        b_relab, 
-                        m_relab), 
-               names_to = "phase", 
-               values_to = "relab") %>% 
-  mutate(phase = recode(phase, 
-                        "p_relab" = "P", 
-                        "b_relab" = "B", 
-                        "m_relab" = "M")) %>% 
-  ggplot(aes(x=factor(phase, levels = rev(c("P", "B", "M"))), 
-             y=relab, 
-             fill=factor(Class, levels = c(funfillvector, "Other")),
-             color=factor(Class, levels = c(funfillvector, "Other")))) + 
-  theme_grey(base_size = 18) +
-  geom_col(width = 0.75) + 
-  scale_fill_manual(values=custcol) +
-  scale_color_manual(values = rep("black", times=length(unique(df$taxlevel)))) + 
-  ylab("Relative abundance (%)") + 
-  labs(title = "Fungi") +
-  scale_y_continuous(labels = scales::percent_format()) + 
-  guides(fill = guide_legend(title="Class", nrow = 4), 
-         color = guide_legend(title="Class", nrow = 4)) +
-  theme(axis.title.y = element_blank(),
-        axis.title.x = element_blank(),
-        legend.position = "bottom", 
-        legend.text = element_text()) +
-  coord_flip() -> funtaxplot; funtaxplot 
-
+  # melt the ps object to a data frame
+  df <- psmelt(top) %>%
+    rename("taxlevel" = taxlevel) |>
+    reframe(abundance = sum(Abundance), .by = c(phase, taxlevel)) |>
+    group_by(phase) |>
+    mutate(
+      relative_abundance = abundance / sum(abundance),
+      relative_abundance = round(relative_abundance, digits = 4)
+    ) |>
+    ungroup() |>
+    mutate(phase = case_match(
+      phase,
+      c("P", "Pioner", "Pioneer") ~ "P",
+      c("B", "Bygg") ~ "B",
+      c("M", "Moden") ~ "M"
+    )) |>
+    arrange(
+      phase, -relative_abundance
+    )
+}
 ```
 
 
-# nematodes
+bacteria
 ```{r}
+bacteria <- readRDS(here("data/clean_data/heathland-fire-bacteria.RDS"))
+bacteria
 
-nematodes <- readRDS(here("data/nematodes/heathland-fire-nematodes.RDS")); nematodes
-nematodes <- prune_taxa(taxa_sums(nematodes) > 0, nematodes); nematodes
+# normalize the number of reads per sample:
+bacrar <- rarefy_even_depth(bacteria,
+  rngseed = 123,
+  replace = F,
+  trimOTUs = T,
+  sample.size = 18963
+)
+bacteria
+bacrar
 
-nemrar <- rarefy_even_depth(nematodes, 
-                            rngseed = 123,
-                            replace = F, 
-                            trimOTUs = T, 
-                            sample.size = min(sample_sums(nematodes))); nematodes; nemrar
+bactaxplot <- plot_top_relab(
+  ps = bacrar, taxlevel = "Phylum",
+  how_many_taxa = 10, group = "phase"
+) +
+  ggtitle("Bacteria")
 
-# use this object to calculate relative abundance at the phylum level: 
-glom <- tax_glom(nemrar, taxrank = "genus", NArm = T); nemrar; glom
-
-top <- names(sort(taxa_sums(glom), decreasing = TRUE))[1:10]; top # get top10 names
-top <- prune_taxa(top, glom); top; sum(taxa_sums(top))
-
-bottom <- names(sort(taxa_sums(glom), decreasing = F))[1:c(ntaxa(glom)-ntaxa(top))]
-
-bottom <- prune_taxa(bottom, glom); bottom; sum(taxa_sums(bottom))
-
-bottom@tax_table[,"kingdom"] = "Other"
-bottom@tax_table[,"phylum"] = "Other"
-bottom@tax_table[,"class"] = "Other"
-bottom@tax_table[,"order"] = "Other"
-bottom@tax_table[,"family"] = "Other"
-bottom@tax_table[,"genus"] = "Other"
-
-bottom; bottom = tax_glom(bottom, taxrank = "genus", NArm = TRUE); bottom # 
-#
-
-top <- merge_phyloseq(top, bottom)
-sample_data(top) <- sample_data(nemrar)
-df <- psmelt(top) %>% 
-  rename("taxlevel" = "genus") 
-
-# We need a custom color palette with 11 colors:
-library(RColorBrewer)
-custcol <- c(brewer.pal(name = "Paired", n = 10), "grey")
-
-# make stuff for fill:
-nemfillvector <- data.frame(df$taxlevel, df$Abundance) %>% 
-  filter(df.taxlevel!="Other")
-
-nemfillvector <- aggregate(nemfillvector$df.Abundance, by=list(nemfillvector$df.taxlevel), FUN = sum)
-
-colnames(nemfillvector) <- c("df.taxlevel", "df.Abundance")
-
-nemfillvector <- nemfillvector[order(nemfillvector$df.Abundance, decreasing = TRUE),]
-
-nemfillvector = unique(nemfillvector$df.taxlevel)
-
-# P-phase: 
-df %>% 
-  mutate(phase = sub("Pioner", "P", phase)) %>% 
-  filter(phase == "P") %>% 
-  select(phase, 
-         taxlevel, 
-         Abundance) %>% 
-  mutate(relab = Abundance / sum(Abundance)) %>% 
-  mutate(p_relab = sum(relab), .by = taxlevel) %>% 
-  select(taxlevel, 
-         p_relab) %>% 
-  distinct() %>% 
-  arrange(-p_relab) -> ptax; ptax
-
-# B-phase
-df %>% 
-  mutate(phase = sub("Bygg", "B", phase)) %>% 
-  filter(phase == "B") %>% 
-  select(phase, 
-         taxlevel, 
-         Abundance) %>% 
-  mutate(relab = Abundance / sum(Abundance)) %>% 
-  mutate(b_relab = sum(relab), .by = taxlevel) %>% 
-  select(taxlevel, 
-         b_relab) %>% 
-  distinct() %>% 
-  arrange(-b_relab) -> btax; btax
-
-# M-phase
-df %>% 
-  mutate(phase = sub("Moden", "M", phase)) %>% 
-  filter(phase == "M") %>% 
-  select(phase, 
-         taxlevel, 
-         Abundance) %>% 
-  mutate(relab = Abundance / sum(Abundance)) %>% 
-  mutate(m_relab = sum(relab), .by = taxlevel) %>% 
-  select(taxlevel, 
-         m_relab) %>% 
-  distinct() %>% 
-  arrange(-m_relab) -> mtax; mtax
-
-ptax %>% 
-  left_join(btax, by = c("taxlevel")) %>% 
-  left_join(mtax, by = "taxlevel") %>% 
-  rename("Genus" = "taxlevel") -> nemtax
-#
-
-nemtax %>% 
-  pivot_longer(cols = c(p_relab, 
-                        b_relab, 
-                        m_relab), 
-               names_to = "phase", 
-               values_to = "relab") %>% 
-  mutate(phase = recode(phase, 
-                        "p_relab" = "P", 
-                        "b_relab" = "B", 
-                        "m_relab" = "M")) %>% 
-  ggplot(aes(x=factor(phase, levels = rev(c("P", "B", "M"))), 
-             y=relab, 
-             fill=factor(Genus, levels = c(nemfillvector, "Other")),
-             color=factor(Genus, levels = c(nemfillvector, "Other")))) + 
-  theme_grey(base_size = 18) +
-  geom_col(width = 0.75) + 
-  scale_fill_manual(values=custcol) +
-  scale_color_manual(values = rep("black", times=length(unique(df$taxlevel)))) + 
-  ylab("Relative abundance (%)") + 
-  labs(title = "Nematodes") +
-  scale_y_continuous(labels = scales::percent_format()) + 
-  guides(fill = guide_legend(title="Genus", nrow = 4), 
-         color = guide_legend(title="Genus", nrow = 4)) +
-  theme(axis.title.y = element_blank(),
-        axis.title.x = element_blank(),
-        legend.position = "bottom", 
-        legend.text = element_text()) +
-  coord_flip() -> nemtaxplot; nemtaxplot 
-
+data.frame(get_top_relab(
+  ps = bacrar,
+  taxlevel = "Phylum",
+  how_many_taxa = 10,
+  group = "phase"
+)) |>
+  select(-abundance) |> 
+  arrange(factor(phase, levels = c("P", "B", "M")), 
+          -relative_abundance)
 ```
 
 
-# pitfall traps
+fungi
 ```{r}
+fungi <- readRDS(here("data/clean_data/heathland-fire-fungi.RDS"))
+fungi <- prune_taxa(taxa_sums(fungi) > 0, fungi)
+sample_names(fungi) <- paste0("sample_", 1:nsamples(fungi))
 
-walk <- readRDS(here("data/walking_arthropods/heathland-fire-walking-arthropods.RDS")); walk
-walk <- prune_taxa(taxa_sums(walk) > 0, walk); walk
+# fix NA's
+tax <- data.frame(fungi@tax_table) %>%
+  replace(is.na(.), values = "Unassigned") %>%
+  mutate(
+    Kingdom = sub("k__", "", Kingdom),
+    Phylum = sub("p__", "", Phylum),
+    Class = sub("c__", "", Class)
+  )
 
-warar <- rarefy_even_depth(walk, 
-                           rngseed = 123,
-                           replace = F, 
-                           trimOTUs = T, 
-                           sample.size = 10); walk; warar
-warar@tax_table <- tax_table(as.matrix(data.frame("order" = colnames(warar@otu_table), 
-                                                  row.names = colnames(warar@otu_table)))); warar
+# put back in ps object
+fungi@tax_table <- tax_table(as.matrix(tax))
 
-# use this object to calculate relative abundance at the phylum level: 
-glom <- tax_glom(warar, taxrank = "order", NArm = T); warar; glom
+# normalize the number of reads per sample
+funrar <- rarefy_even_depth(fungi,
+  rngseed = 123,
+  replace = F,
+  trimOTUs = T,
+  sample.size = min(sample_sums(fungi))
+)
 
-top <- names(sort(taxa_sums(glom), decreasing = TRUE))[1:10]; top # get top10 names
-top <- prune_taxa(top, glom); top; sum(taxa_sums(top))
+# make relative abundance figure
+funtaxplot <- plot_top_relab(
+  ps = funrar, taxlevel = "Class",
+  how_many_taxa = 11, group = "phase"
+) +
+  ggtitle("Fungi")
+funtaxplot
 
-bottom <- names(sort(taxa_sums(glom), decreasing = F))[1:c(ntaxa(glom)-ntaxa(top))]
-
-bottom <- prune_taxa(bottom, glom); bottom; sum(taxa_sums(bottom))
-
-bottom@tax_table[,"order"] = "Other"
-
-bottom; bottom = tax_glom(bottom, taxrank = "order", NArm = TRUE); bottom # 
-#
-
-top <- merge_phyloseq(top, bottom)
-sample_data(top) <- sample_data(warar)
-df <- psmelt(top) %>% 
-  rename("taxlevel" = "order") 
-
-# We need a custom color palette with 11 colors:
-library(RColorBrewer)
-custcol <- c(brewer.pal(name = "Paired", n = 10), "grey")
-
-# make stuff for fill:
-wafillvector <- data.frame(df$taxlevel, df$Abundance) %>% 
-  filter(df.taxlevel!="Other")
-
-wafillvector <- aggregate(wafillvector$df.Abundance, by=list(wafillvector$df.taxlevel), FUN = sum)
-
-colnames(wafillvector) <- c("df.taxlevel", "df.Abundance")
-
-wafillvector <- wafillvector[order(wafillvector$df.Abundance, decreasing = TRUE),]
-
-wafillvector = unique(wafillvector$df.taxlevel)
-
-# P-phase: 
-df %>% 
-  mutate(phase = sub("Pioner", "P", phase)) %>% 
-  filter(phase == "P") %>% 
-  select(phase, 
-         taxlevel, 
-         Abundance) %>% 
-  mutate(relab = Abundance / sum(Abundance)) %>% 
-  mutate(p_relab = sum(relab), .by = taxlevel) %>% 
-  select(taxlevel, 
-         p_relab) %>% 
-  distinct() %>% 
-  arrange(-p_relab) -> ptax; ptax
-
-# B-phase
-df %>% 
-  mutate(phase = sub("Bygg", "B", phase)) %>% 
-  filter(phase == "B") %>% 
-  select(phase, 
-         taxlevel, 
-         Abundance) %>% 
-  mutate(relab = Abundance / sum(Abundance)) %>% 
-  mutate(b_relab = sum(relab), .by = taxlevel) %>% 
-  select(taxlevel, 
-         b_relab) %>% 
-  distinct() %>% 
-  arrange(-b_relab) -> btax; btax
-
-# M-phase
-df %>% 
-  mutate(phase = sub("Moden", "M", phase)) %>% 
-  filter(phase == "M") %>% 
-  select(phase, 
-         taxlevel, 
-         Abundance) %>% 
-  mutate(relab = Abundance / sum(Abundance)) %>% 
-  mutate(m_relab = sum(relab), .by = taxlevel) %>% 
-  select(taxlevel, 
-         m_relab) %>% 
-  distinct() %>% 
-  arrange(-m_relab) -> mtax; mtax
-
-ptax %>% 
-  left_join(btax, by = c("taxlevel")) %>% 
-  left_join(mtax, by = "taxlevel") %>% 
-  rename("Genus" = "taxlevel") -> watax
-#
-
-watax %>% 
-  pivot_longer(cols = c(p_relab, 
-                        b_relab, 
-                        m_relab), 
-               names_to = "phase", 
-               values_to = "relab") %>% 
-  mutate(phase = recode(phase, 
-                        "p_relab" = "P", 
-                        "b_relab" = "B", 
-                        "m_relab" = "M")) %>% 
-  ggplot(aes(x=factor(phase, levels = rev(c("P", "B", "M"))), 
-             y=relab, 
-             fill=factor(Genus, levels = c(wafillvector, "Other")),
-             color=factor(Genus, levels = c(wafillvector, "Other")))) + 
-  theme_grey(base_size = 18) +
-  geom_col(width = 0.75) + 
-  scale_fill_manual(values=custcol) +
-  scale_color_manual(values = rep("black", times=length(unique(df$taxlevel)))) + 
-  ylab("Relative abundance (%)") + 
-  labs(title = "Walking arthropods") +
-  scale_y_continuous(labels = scales::percent_format()) + 
-  guides(fill = guide_legend(title="Group", 
-                             nrow = 4), 
-         color = guide_legend(title="Group", 
-                              nrow = 4)) +
-  theme(axis.title.y = element_blank(),
-        axis.title.x = element_blank(),
-        legend.position = "bottom", 
-        legend.text = element_text()) +
-  coord_flip() -> wataxplot; wataxplot 
-#
+data.frame(get_top_relab(
+  ps = funrar,
+  taxlevel = "Class",
+  how_many_taxa = 11,
+  group = "phase"
+)) |>
+  select(-abundance) |> 
+  arrange(factor(phase, levels = c("P", "B", "M")), 
+          -relative_abundance)
 ```
 
 
-# flying insects
+nematodes
 ```{r}
+nematodes <- readRDS(here("data/clean_data/heathland-fire-nematodes.RDS"))
+nematodes <- prune_taxa(taxa_sums(nematodes) > 0, nematodes)
 
-insects <- readRDS(here("data/insects/heathland-fire-insects.RDS")); insects
-insects <- prune_taxa(taxa_sums(insects) >0, insects); insects
+nemrar <- rarefy_even_depth(nematodes,
+  rngseed = 123,
+  replace = F,
+  trimOTUs = T,
+  sample.size = min(sample_sums(nematodes))
+)
+nematodes
+nemrar
 
-inrar <- rarefy_even_depth(insects, 
-                           rngseed = 123,
-                           replace = F, 
-                           trimOTUs = T, 
-                           sample.size = min(sample_sums(insects))); insects; inrar
+nemtaxplot <- plot_top_relab(
+  ps = nemrar,
+  taxlevel = "genus",
+  how_many_taxa = 10,
+  group = "phase"
+) +
+  ggtitle("Nematodes") +
+  guides(
+    fill = guide_legend(title = "Genus", ncol = 3, nrow = 4),
+    color = guide_legend(title = "Genus", ncol = 3, nrow = 4)
+  )
 
-# use this object to calculate relative abundance at the phylum level: 
-glom <- tax_glom(inrar, taxrank = "order", NArm = T); inrar; glom
-
-top <- names(sort(taxa_sums(glom), decreasing = TRUE))[1:11]; top # get top10 names
-top <- prune_taxa(top, glom); top; sum(taxa_sums(top))
-
-bottom <- names(sort(taxa_sums(glom), decreasing = F))[1:c(ntaxa(glom)-ntaxa(top))]
-
-bottom <- prune_taxa(bottom, glom); bottom; sum(taxa_sums(bottom))
-
-bottom@tax_table[,"order"] = "Other"
-
-bottom; bottom <- tax_glom(bottom, taxrank = "order", NArm = TRUE); bottom # 
-#
-
-top <- merge_phyloseq(top, bottom)
-sample_data(top) <- sample_data(inrar)
-df <- psmelt(top) %>% 
-  rename("taxlevel" = "order") 
-
-# We need a custom color palette with 11 colors:
-library(RColorBrewer)
-custcol <- c(brewer.pal(name = "Paired", n = 10), "grey")
-
-# make stuff for fill:
-infillvector <- data.frame(df$taxlevel, df$Abundance) %>% 
-  filter(df.taxlevel!="Other")
-
-infillvector <- aggregate(infillvector$df.Abundance, by=list(infillvector$df.taxlevel), FUN = sum)
-
-colnames(infillvector) <- c("df.taxlevel", "df.Abundance")
-
-infillvector <- infillvector[order(infillvector$df.Abundance, decreasing = TRUE),]
-
-infillvector = unique(infillvector$df.taxlevel)
-
-# P-phase: 
-df %>% 
-  mutate(phase = sub("Pioner", "P", phase)) %>% 
-  filter(phase == "P") %>% 
-  select(phase, 
-         taxlevel, 
-         Abundance) %>% 
-  mutate(relab = Abundance / sum(Abundance)) %>% 
-  mutate(p_relab = sum(relab), .by = taxlevel) %>% 
-  select(taxlevel, 
-         p_relab) %>% 
-  distinct() %>% 
-  arrange(-p_relab) -> ptax; ptax
-
-# B-phase
-df %>% 
-  mutate(phase = sub("Bygg", "B", phase)) %>% 
-  filter(phase == "B") %>% 
-  select(phase, 
-         taxlevel, 
-         Abundance) %>% 
-  mutate(relab = Abundance / sum(Abundance)) %>% 
-  mutate(b_relab = sum(relab), .by = taxlevel) %>% 
-  select(taxlevel, 
-         b_relab) %>% 
-  distinct() %>% 
-  arrange(-b_relab) -> btax; btax
-
-# M-phase
-df %>% 
-  mutate(phase = sub("Moden", "M", phase)) %>% 
-  filter(phase == "M") %>% 
-  select(phase, 
-         taxlevel, 
-         Abundance) %>% 
-  mutate(relab = Abundance / sum(Abundance)) %>% 
-  mutate(m_relab = sum(relab), .by = taxlevel) %>% 
-  select(taxlevel, 
-         m_relab) %>% 
-  distinct() %>% 
-  arrange(-m_relab) -> mtax; mtax
-
-ptax %>% 
-  left_join(btax, by = c("taxlevel")) %>% 
-  left_join(mtax, by = "taxlevel") %>% 
-  rename("Genus" = "taxlevel") -> intax
-#
-
-intax %>% 
-  pivot_longer(cols = c(p_relab, 
-                        b_relab, 
-                        m_relab), 
-               names_to = "phase", 
-               values_to = "relab") %>% 
-  mutate(phase = recode(phase, 
-                        "p_relab" = "P", 
-                        "b_relab" = "B", 
-                        "m_relab" = "M")) %>% 
-  ggplot(aes(x=factor(phase, levels = rev(c("P", "B", "M"))), 
-             y=relab, 
-             fill=factor(Genus, levels = c(infillvector, "Other")),
-             color=factor(Genus, levels = c(infillvector, "Other")))) + 
-  theme_grey(base_size = 18) +
-  geom_col(width = 0.75) + 
-  scale_fill_manual(values=custcol) +
-  scale_color_manual(values = rep("black", times=length(unique(df$taxlevel)))) + 
-  ylab("Relative abundance (%)") + 
-  labs(title = "Flying insects******") +
-  scale_y_continuous(labels = scales::percent_format()) + 
-  guides(fill = guide_legend(title="Group", nrow = 4), 
-         color = guide_legend(title="Group", nrow = 4)) +
-  theme(axis.title.y = element_blank(),
-        axis.title.x = element_blank(),
-        legend.position = "bottom", 
-        legend.text = element_text()) +
-  coord_flip(ylim = c(0, 0.45)) -> intaxplot; intaxplot 
-#
-
-# make krona charts to go along with the results:
-#nemrar@sam_data$phase <- sub("Pioner", "P", nemrar@sam_data$phase)
-#nemrar@sam_data$phase <- sub("Bygg", "B", nemrar@sam_data$phase)
-#nemrar@sam_data$phase <- sub("Moden", "M", nemrar@sam_data$phase)
-#nemrar@tax_table[,""]
-
-#plot_krona(nemrar, output = c("~/Desktop/"), variable = "phase")
-#
+data.frame(get_top_relab(
+  ps = nemrar,
+  taxlevel = "genus",
+  how_many_taxa = 10,
+  group = "phase"
+)) |>
+  select(-abundance) |> 
+  arrange(factor(phase, levels = c("P", "B", "M")), 
+          -relative_abundance)
 ```
 
 
-# plants
+walking arthropods
 ```{r}
+pit <- readRDS(here("data/clean_data/heathland-fire-pitfall.RDS"))
+pit <- prune_taxa(taxa_sums(pit) > 0, pit)
 
+pitrar <- rarefy_even_depth(pit,
+  rngseed = 123,
+  replace = F,
+  trimOTUs = T,
+  sample.size = 10
+)
+
+pittaxplot <- plot_top_relab(
+  ps = pitrar, taxlevel = "Order",
+  how_many_taxa = 10, group = "phase"
+) +
+  ggtitle("Pitfall traps") +
+  guides(
+    fill = guide_legend(title = "Order", ncol = 3, nrow = 4),
+    color = guide_legend(title = "Order", ncol = 3, nrow = 4)
+  )
+
+data.frame(get_top_relab(
+  ps = pitrar,
+  taxlevel = "Order",
+  how_many_taxa = 10,
+  group = "phase"
+)) |>
+  select(-abundance) |> 
+  arrange(factor(phase, levels = c("P", "B", "M")), 
+          -relative_abundance)
+```
+
+
+flying insects
+```{r}
+insects <- readRDS(here("data/insects/heathland-fire-insects.RDS"))
+insects
+insects <- prune_taxa(taxa_sums(insects) > 0, insects)
+insects
+
+inrar <- rarefy_even_depth(insects,
+  rngseed = 123,
+  replace = F,
+  trimOTUs = T,
+  sample.size = min(sample_sums(insects))
+)
+
+(intaxplot <- plot_top_relab(
+  ps = inrar, taxlevel = "order",
+  how_many_taxa = 10, group = "phase"
+) +
+  ggtitle("Malaise traps") +
+  coord_flip(ylim = c(0, 0.425)) +
+  guides(
+    fill = guide_legend(title = "Order", ncol = 3, nrow = 4),
+    color = guide_legend(title = "Order", ncol = 3, nrow = 4)
+  ))
+
+relab <- get_top_relab(
+  ps = inrar, taxlevel = "order",
+  how_many_taxa = 10,
+  group = "phase"
+)
+relab
+```
+
+
+plants
+```{r}
 plants <- readRDS("data/plants/heathland-fire-plants.RDS")
-plants <- prune_taxa(taxa_sums(plants) > 0, plants); plants
+plants <- prune_taxa(taxa_sums(plants) > 0, plants)
+plants
 
-plants@tax_table <- tax_table(as.matrix(data.frame("group" = colnames(plants@otu_table), 
-                                                   row.names = colnames(plants@otu_table)))); plants
+# make plot
+(plataxplot <- plot_top_relab(
+  ps = plants, taxlevel = "species",
+  how_many_taxa = 10, group = "phase"
+) +
+  ggtitle("Plants") +
+  guides(
+    fill = guide_legend(title = "Species", ncol = 3, nrow = 4, ),
+    color = guide_legend(title = "Species", ncol = 3, nrow = 4)
+  ))
 
-# use this object to calculate relative abundance at the phylum level: 
-glom <- tax_glom(plants, taxrank = "group", NArm = T); plants; glom
-
-top <- names(sort(taxa_sums(glom), decreasing = TRUE))[1:10]; top # get top10 names
-top <- prune_taxa(top, glom); top; sum(taxa_sums(top)) # make a phyloseq object with the top 10 taxa
-
-bottom <- names(sort(taxa_sums(glom), decreasing = F))[1:c(ntaxa(glom)-ntaxa(top))]
-
-bottom <- prune_taxa(bottom, glom); bottom; sum(taxa_sums(bottom)) # make a ps object form bottom taxa
-
-bottom@tax_table[,"group"] = "Other"
-
-#bottom <- tax_glom(bottom, taxrank = "group", NArm = TRUE); bottom # 
-#
-
-top <- merge_phyloseq(top, bottom)
-sample_data(top) <- sample_data(plants)
-df <- psmelt(top) %>% 
-  rename("taxlevel" = "group") 
-
-# We need a custom color palette with 11 colors:
-library(RColorBrewer)
-custcol <- c(brewer.pal(name = "Paired", n = 10), "grey")
-
-# make stuff for fill:
-plafillvector <- data.frame(df$taxlevel, df$Abundance) %>% 
-  filter(df.taxlevel!="Other")
-
-plafillvector <- aggregate(plafillvector$df.Abundance, by=list(plafillvector$df.taxlevel), FUN = sum)
-
-colnames(plafillvector) <- c("df.taxlevel", "df.Abundance")
-
-plafillvector <- plafillvector[order(plafillvector$df.Abundance, decreasing = TRUE),]
-
-plafillvector = unique(plafillvector$df.taxlevel)
-
-# P-phase: 
-df %>% 
-  mutate(phase = sub("Pioner", "P", phase)) %>% 
-  filter(phase == "P") %>% 
-  select(phase, 
-         taxlevel, 
-         Abundance) %>% 
-  mutate(relab = Abundance / sum(Abundance)) %>% 
-  mutate(p_relab = sum(relab), .by = taxlevel) %>% 
-  select(taxlevel, 
-         p_relab) %>% 
-  distinct() %>% 
-  arrange(-p_relab) -> ptax; ptax
-
-# B-phase
-df %>% 
-  mutate(phase = sub("Bygg", "B", phase)) %>% 
-  filter(phase == "B") %>% 
-  select(phase, 
-         taxlevel, 
-         Abundance) %>% 
-  mutate(relab = Abundance / sum(Abundance)) %>% 
-  mutate(b_relab = sum(relab), .by = taxlevel) %>% 
-  select(taxlevel, 
-         b_relab) %>% 
-  distinct() %>% 
-  arrange(-b_relab) -> btax; btax
-
-# M-phase
-df %>% 
-  mutate(phase = sub("Moden", "M", phase)) %>% 
-  filter(phase == "M") %>% 
-  select(phase, 
-         taxlevel, 
-         Abundance) %>% 
-  mutate(relab = Abundance / sum(Abundance)) %>% 
-  mutate(m_relab = sum(relab), .by = taxlevel) %>% 
-  select(taxlevel, 
-         m_relab) %>% 
-  distinct() %>% 
-  arrange(-m_relab) -> mtax; mtax
-
-ptax %>% 
-  left_join(btax, by = c("taxlevel")) %>% 
-  left_join(mtax, by = "taxlevel") %>% 
-  rename("Genus" = "taxlevel") -> platax
-#
-
-platax %>% 
-  pivot_longer(cols = c(p_relab, 
-                        b_relab, 
-                        m_relab), 
-               names_to = "phase", 
-               values_to = "relab") %>% 
-  mutate(phase = recode(phase, 
-                        "p_relab" = "P", 
-                        "b_relab" = "B", 
-                        "m_relab" = "M")) %>% 
-  ggplot(aes(x=factor(phase, levels = rev(c("P", "B", "M"))), 
-             y=relab, 
-             fill=factor(Genus, levels = c(plafillvector, "Other")),
-             color=factor(Genus, levels = c(plafillvector, "Other")))) + 
-  theme_grey(base_size = 18) +
-  geom_col(width = 0.75) + 
-  scale_fill_manual(values=custcol) +
-  scale_color_manual(values = rep("black", times=length(unique(df$taxlevel)))) + 
-  ylab("Relative abundance (%)") + 
-  labs(title = "Plants") +
-  scale_y_continuous(labels = scales::percent_format()) + 
-  guides(fill = guide_legend(title="Group", nrow = 4), 
-         color = guide_legend(title="Group", nrow = 4)) +
-  theme(axis.title.y = element_blank(),
-        axis.title.x = element_blank(),
-        legend.position = "bottom", 
-        legend.text = element_text()) +
-  coord_flip() -> plataxplot; plataxplot 
-#
-
-# make krona charts to go along with the results:
-#nemrar@sam_data$phase <- sub("Pioner", "P", nemrar@sam_data$phase)
-#nemrar@sam_data$phase <- sub("Bygg", "B", nemrar@sam_data$phase)
-#nemrar@sam_data$phase <- sub("Moden", "M", nemrar@sam_data$phase)
-#nemrar@tax_table[,""]
-
-#plot_krona(nemrar, output = c("~/Desktop/"), variable = "phase")
-#
+# get relative abundances
+relab <- get_top_relab(
+  ps = plants, taxlevel = "functional_groups",
+  how_many_taxa = ntaxa(plants),
+  group = "phase"
+)
+relab
 ```
 
 
-# arrange the plots
+arrange the plots
 ```{r}
 library(ggpubr)
 
 ggarrange(
-  bactaxplot, 
-  funtaxplot, 
-  nemtaxplot, 
-  wataxplot, 
-  intaxplot, 
-  plataxplot, 
+  plataxplot,
+  intaxplot,
+  wataxplot,
+  nemtaxplot,
+  funtaxplot,
+  bactaxplot,
   nrow = 2,
   ncol = 3,
-  widths = c(1, 1, 1,  
-             1, 1, 1), 
-  heights = c(1, 1, 1, 
-              1, 1, 1)
+  widths = c(
+    1, 1, 1,
+    1, 1, 1
+  ),
+  heights = c(
+    1, 1, 1,
+    1, 1, 1
+  )
 )
-#
+# 7 x 17.5
 ```
-
-
