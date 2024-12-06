@@ -9,8 +9,8 @@ load library
 
 ```{r}
 library(here)
-library(tidyverse)
 library(janitor)
+library(tidyverse)
 library(phyloseq)
 ```
 
@@ -18,6 +18,8 @@ library(phyloseq)
 cleaning plants
 
 ```{r}
+here("")
+plants <- data.frame(read.csv(file = here("../")))
 
 plants <- data.frame(read.csv("data/plants/data_veg.csv", sep = ";")) %>% 
   t() %>% 
