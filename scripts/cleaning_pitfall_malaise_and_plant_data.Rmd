@@ -12,167 +12,200 @@ library(here)
 library(janitor)
 library(tidyverse)
 library(phyloseq)
+library(readxl)
 ```
-
 
 cleaning plants
 
 ```{r}
-# we start with cleaning the plants. the raw data sheet contains a lot of information that we did not use in the paper
-plants <- data.frame(read.csv("data/raw_data/pitfall_malaise_plants/data_veg.csv", sep = ";")) |> 
-  t() |> 
-  data.frame() |> 
-  row_to_names(1) |> 
-  clean_names() |> 
-  filter(naturtype != "Semi-naturlig eng") |> 
-  rename("phase" = "fase") |> 
-  mutate(phase = recode(phase, 
-                       "PF" = "P", 
-                       "BF" = "B", 
-                       "MF" = "M"))
+
+plants <- data.frame(read.csv("data/raw_data/pitfall_malaise_plants/data_veg.csv", sep = ";")) |>
+  t() |>
+  data.frame() |>
+  row_to_names(1) |>
+  clean_names() |>
+  filter(naturtype != "Semi-naturlig eng") |>
+  rename("phase" = "fase") |>
+  mutate(phase = recode(phase,
+    "PF" = "P",
+    "BF" = "B",
+    "MF" = "M"
+  ))
 
 
-mat <- plants |> 
-  # select and relevant columns
-  select(37:128) |> 
-  mutate_at(vars(1:92), as.numeric) |> 
-  replace(is.na(.), 0) |> 
+# construct a matrix equivalent to an otu table in a phyloseq object
+mat <- plants |>
+  select(37:128) |>
+  mutate_at(vars(1:92), as.numeric) %>%
+  replace(is.na(.), 0) |>
   # filter out unwanted "taxa"
-  select(-c(lyngarter_uten_rosslyng,
-            andre_forvedete_arter,
-            urter,
-            graminider,
-            lav,
-            moser, 
-            svart_liten_sopp_foto)) |> 
+  select(-c(
+    lyngarter_uten_rosslyng,
+    andre_forvedete_arter,
+    urter,
+    graminider,
+    lav,
+    moser,
+    mosepose,
+    svart_liten_sopp_foto
+  )) |>
   # replace norwegian names with scientific names
-  dplyr::rename("sigdmose_sp" = "dicranum_sp_sigdmose_sp") |> 
+  dplyr::rename("sigdmose_sp" = "dicranum_sp_sigdmose_sp") |>
   dplyr::rename(
-    "Cerastium_fontanum" = "arve", 
-    "Euphrasia_officinalis" = "augnetroyst", 
-    "Blechnum_spicant" =  "bjonnkam", 
-    "Trichophorum_cespitosum" = "bjonnskjegg", 
-    "Polytrichum_sp" = "bjornemose", 
-    "Vaccinium_myrtillus" = "blabaer", 
-    "Campanula_rotundifolia"  = "blaklokke", 
-    "Succisa_pratensis" = "blaknapp", 
-    "Prunella_vulgaris" = "blakoll", 
-    "Carex_flacca" = "blastarr", 
-    "Molinia_caerulea" = "blatopp", 
-    "Vaccinium_uliginosum" = "blokkebaer", 
+    "Cerastium_fontanum" = "arve",
+    "Euphrasia_officinalis" = "augnetroyst",
+    "Blechnum_spicant" = "bjonnkam",
+    "Trichophorum_cespitosum" = "bjonnskjegg",
+    "Polytrichum_sp" = "bjornemose",
+    "Vaccinium_myrtillus" = "blabaer",
+    "Campanula_rotundifolia" = "blaklokke",
+    "Succisa_pratensis" = "blaknapp",
+    "Prunella_vulgaris" = "blakoll",
+    "Carex_flacca" = "blastarr",
+    "Molinia_caerulea" = "blatopp",
+    "Vaccinium_uliginosum" = "blokkebaer",
     "Carex_pilulifera" = "bratestarr",
     "Juniperus_sp" = "einer",
     "Viola_canina" = "engfiol",
     "Luzula_multiflora" = "engfrytle",
-    "Geum_rivale" =  "enghumleblom",
-    "Rhytidiadelphus_squarrosus" =  "engkransmose",
-    "Agrostis_capillaris" =  "engkvein",
-    "Holcus_lanatus" =  "englodnegras",
-    "Poa_pratensis" =  "engrapp",
-    "Ranunculus_acris" =  "engsoleie",
-    "Rumex_acetosa" =  "engsyre",
-    "Hylocomium_splendens" =  "etasjemose",
-    "Nardus_stricta" =  "finnskjegg",
-    "Viola_sp" =  "fiol_sp",
-    "Hypericum_maculatum" =  "firkantperikum",
-    "Alchemilla_alpina" =  "fjellmarikape", 
-    "Dactylorhiza_maculata" =  "flekkmarihand",
-    "Luzula_sp" =  "frytle_sp",
-    "Vicia_cracca" =  "fuglevikke",
-    "Pleurozium_schreberi" =  "furumose",
-    "Oxalis_acetosella" =  "gauksyre",
-    "Festuca_vivipara" =  "geitsvingel",
-    "Poaceae" =  "gras_sp",
-    "Anthoxanthum_odoratum" =  "gulaks",
-    "Saxifraga_aizoides" =  "gulsildre",
-    "Luzula_pilosa" =  "harfrytle",
-    "Polygala_serpyllifolia" =  "heiblafjor",
-    "Hypnum_jutlandicum" =  "heiflette",
-    "Carex_binervis" =  "heistarr",
-    "Parnassia_palustris" =  "jablom",
-    "Erica_tetralix" =  "klokkelyng",
-    "Carex_panicea" =  "kornstarr",
-    "Holcus_mollis" =  "krattlodnegras",
-    "Empetrum_nigrum" =  "krekling",
-    "Plagiomnium_undulatum" =  "krusfagermose",
-    "Cirsium_heterophyllum" =  "kvitbladtistel",
-    "Trifolium_repens" =  "kvitklover",
-    "Anemone_nemorosa" =  "kvitveis",
-    "Rhytidiadelphus_loreus" =  "kystkransmose",
-    "Veronica_officinalis" =  "legeveronika",
-    "Marchantiophyta" =  "levermose_sp",
-    "Carex pulicarus" =  "loppestarr",
-    "Taraxacum_sp" =  "lovetann",
-    "Cladonia_arbuscula" =  "lys_reinlav",
-    "Maianthemum_bifolium" =  "maiblom",
-    "Alchemilla_sp" =  "marikape",
-    "Arctostaphylos_uva-ursi" =  "melbaer",
-    "Filipendula_ulmaria" =  "mjodurt",  
-    "unknown_bryophyte" =  "mosepose",
-    "Cirsium_palustre" =  "myrtistel",
-    "Pseudoscleropodium_purum" =  "narremose",
-    "Hypericum_sp" =  "perikum_sp", 
-    "Festuca_rubra" =  "rodsvingel",
-    "Calluna_vulgaris" =  "rosslyng",
-    "Achillea_millefolium" =  "ryllik",
-    "Arctous_alpina" =  "rypebaer", 
-    "Festuca_ovina" =  "sauesvingel",
-    "Dicranum_1" =  "sigdmose",
-    "Dicranum_2" =  "sigdmose_sp",
-    "Lysimachia_europaea" =  "skogstjerne",   
-    "Chamaepericlymenum_suecicum" =  "skrubbaer",
-    "Carex_nigra_nigra" =  "slattestarr",
-    "Avenella_flexuosa" =  "smyle",
-    "Deschampsia_cespitosa_cespitosa" =  "solvbunke",
-    "Carex_sp" =  "starr_sp",
-    "Luzula_sylvatica" =  "storfrytle",
-    "Hylocomiadelphus_triquetrus" =  "storkransmose",
-    "Lycopodium_annotinum" =  "stri_krakefot",
-    "Festuca_sp" =  "svingel_sp",
-    "Rumex_sp" =  "syre_sp",
-    "Potentilla_erecta" =  "tepperot",
-    "Lotus_corniculatus" =  "tiriltunge",
-    "Vaccinium_vitis-ideae" =  "tyttebaer"
-  ) |> 
-  mutate(Dicranum = Dicranum_1 + Dicranum_2) |> 
+    "Geum_rivale" = "enghumleblom",
+    "Rhytidiadelphus_squarrosus" = "engkransmose",
+    "Agrostis_capillaris" = "engkvein",
+    "Holcus_lanatus" = "englodnegras",
+    "Poa_pratensis" = "engrapp",
+    "Ranunculus_acris" = "engsoleie",
+    "Rumex_acetosa" = "engsyre",
+    "Hylocomium_splendens" = "etasjemose",
+    "Nardus_stricta" = "finnskjegg",
+    "Viola_sp" = "fiol_sp",
+    "Hypericum_maculatum" = "firkantperikum",
+    "Alchemilla_alpina" = "fjellmarikape",
+    "Dactylorhiza_maculata" = "flekkmarihand",
+    "Luzula_sp" = "frytle_sp",
+    "Vicia_cracca" = "fuglevikke",
+    "Pleurozium_schreberi" = "furumose",
+    "Oxalis_acetosella" = "gauksyre",
+    "Festuca_vivipara" = "geitsvingel",
+    "Poaceae" = "gras_sp",
+    "Anthoxanthum_odoratum" = "gulaks",
+    "Saxifraga_aizoides" = "gulsildre",
+    "Luzula_pilosa" = "harfrytle",
+    "Polygala_serpyllifolia" = "heiblafjor",
+    "Hypnum_jutlandicum" = "heiflette",
+    "Carex_binervis" = "heistarr",
+    "Parnassia_palustris" = "jablom",
+    "Erica_tetralix" = "klokkelyng",
+    "Carex_panicea" = "kornstarr",
+    "Holcus_mollis" = "krattlodnegras",
+    "Empetrum_nigrum" = "krekling",
+    "Plagiomnium_undulatum" = "krusfagermose",
+    "Cirsium_heterophyllum" = "kvitbladtistel",
+    "Trifolium_repens" = "kvitklover",
+    "Anemone_nemorosa" = "kvitveis",
+    "Rhytidiadelphus_loreus" = "kystkransmose",
+    "Veronica_officinalis" = "legeveronika",
+    "Marchantiophyta" = "levermose_sp",
+    "Carex_pulicarus" = "loppestarr",
+    "Taraxacum_sp" = "lovetann",
+    "Cladonia_arbuscula" = "lys_reinlav",
+    "Maianthemum_bifolium" = "maiblom",
+    "Alchemilla_sp" = "marikape",
+    "Arctostaphylos_uva-ursi" = "melbaer",
+    "Filipendula_ulmaria" = "mjodurt",
+    "Cirsium_palustre" = "myrtistel",
+    "Pseudoscleropodium_purum" = "narremose",
+    "Hypericum_sp" = "perikum_sp",
+    "Festuca_rubra" = "rodsvingel",
+    "Calluna_vulgaris" = "rosslyng",
+    "Achillea_millefolium" = "ryllik",
+    "Arctous_alpina" = "rypebaer",
+    "Festuca_ovina" = "sauesvingel",
+    "Dicranum_1" = "sigdmose",
+    "Dicranum_2" = "sigdmose_sp",
+    "Lysimachia_europaea" = "skogstjerne",
+    "Chamaepericlymenum_suecicum" = "skrubbaer",
+    "Carex_nigra_nigra" = "slattestarr",
+    "Avenella_flexuosa" = "smyle",
+    "Deschampsia_cespitosa_cespitosa" = "solvbunke",
+    "Carex_sp" = "starr_sp",
+    "Luzula_sylvatica" = "storfrytle",
+    "Hylocomiadelphus_triquetrus" = "storkransmose",
+    "Lycopodium_annotinum" = "stri_krakefot",
+    "Festuca_sp" = "svingel_sp",
+    "Rumex_sp" = "syre_sp",
+    "Potentilla_erecta" = "tepperot",
+    "Lotus_corniculatus" = "tiriltunge",
+    "Vaccinium_vitis-ideae" = "tyttebaer"
+  ) |>
+  mutate(Dicranum = Dicranum_1 + Dicranum_2) |>
   select(-Dicranum_1, -Dicranum_2)
 
-# prepare matrix acting as otu_table
-mat <- as.matrix(mat)
+# construct a data frame equivalent to a taxonomic table in a phyloseq object, using mat
+tax <- data.frame(species = colnames(mat)) |>
+  mutate(functional_groups = case_match(
+    species,
+    # assign shrubs
+    c("Juniperus_sp", "Lycopodium_annotinum", "Blechnum_spicant") ~ "Shrubs",
+    # assign graminoids
+    c(
+      "Trichophorum_cespitosum", "Molinia_caerulea", "Carex_flacca",
+      "Carex_pilulifera", "Agrostis_capillaris", "Holcus_lanatus",
+      "Poa_pratensis", "Luzula_multiflora", "Luzula_sp",
+      "Nardus_stricta", "Festuca_vivipara", "Poaceae",
+      "Anthoxanthum_odoratum", "Carex_binervis", "Luzula_pilosa",
+      "Holcus_mollis", "Carex_panicea", "Carex_pulicarus",
+      "Festuca_rubra", "Carex_nigra_nigra", "Avenella_flexuosa",
+      "Luzula_sylvatica", "Carex_sp", "Deschampsia_cespitosa_cespitosa",
+      "Festuca_ovina", "Festuca_sp"
+    ) ~ "Graminoids",
+    # assign forbs
+    c(
+      "Cerastium_fontanum", "Euphrasia_officinalis", "Campanula_rotundifolia", "Prunella_vulgaris",
+      "Succisa_pratensis", "Viola_canina", "Geum_rivale",
+      "Rumex_acetosa", "Ranunculus_acris", "Dactylorhiza_maculata",
+      "Hypericum_maculatum", "Alchemilla_alpina", "Vicia_cracca",
+      "Oxalis_acetosella", "Saxifraga_aizoides", "Polygala_serpyllifolia",
+      "Parnassia_palustris", "Cirsium_heterophyllum", "Trifolium_repens",
+      "Anemone_nemorosa", "Veronica_officinalis", "Taraxacum_sp",
+      "Alchemilla_sp", "Maianthemum_bifolium", "Filipendula_ulmaria",
+      "Cirsium_palustre", "Hypericum_sp", "Potentilla_erecta",
+      "Achillea_millefolium", "Chamaepericlymenum_suecicum", "Lysimachia_europaea",
+      "Lotus_corniculatus", "Viola_sp", "Rumex_sp"
+    ) ~ "Forbs",
+    # assign dwarf shrubs
+    c(
+      "Calluna_vulgaris", "Vaccinium_uliginosum", "Vaccinium_myrtillus",
+      "Erica_tetralix", "Empetrum_nigrum", "Arctostaphylos_uva-ursi",
+      "Arctous_alpina", "Vaccinium_vitis-ideae"
+    ) ~ "Dwarf_shrubs",
+    # assign bryophytes
+    c(
+      "Polytrichum_sp", "Rhytidiadelphus_squarrosus", "Hylocomium_splendens",
+      "Pleurozium_schreberi", "Hypnum_jutlandicum", "Plagiomnium_undulatum",
+      "Rhytidiadelphus_loreus", "Marchantiophyta", "Pseudoscleropodium_purum",
+      "Hylocomiadelphus_triquetrus", "Dicranum"
+    ) ~ "Bryophytes",
+    # assign lichens
+    c("Cladonia_arbuscula") ~ "Lichens"
+  )) |>
+  relocate(functional_groups, species) |>
+  mutate(new_row_names = species) |>
+  column_to_rownames("new_row_names")
 
 # prepare sample data
-sam <- plants |> 
+sam <- plants |>
   select(phase, blokk, plott)
 
 # assemble phyloseq object
-ps <- phyloseq(otu_table(mat, taxa_are_rows = F), 
-               sample_data(sam))
+ps <- phyloseq(
+  tax_table(as.matrix(tax)),
+  otu_table(mat, taxa_are_rows = F),
+  sample_data(sam)
+)
 
-```
+# prune taxa with 0 abundance
+(ps <- prune_taxa(taxa_sums(ps) > 0, ps))
 
-
-cleaning plants functional groups
-
-```{r}
-plants <- data.frame(read_xlsx("~/Downloads/BG2.0_data_vegetasjon_lgv.xlsx", 
-                               sheet = 2)) |> 
-  slice(-c(6:42)) |> 
-  t() |> 
-  data.frame() |> 
-  row_to_names(1) |> 
-  clean_names() |> 
-  filter(lyngheifase != "NA") |> 
-  mutate(across(busker_kratt:na_8, as.numeric))
-
-
-  mutate(shrubs = c(einer + bjonnkam))
-  
-  filter(naturtype != "Semi-naturlig eng") |> 
-  rename("phase" = "fase") |> 
-  mutate(phase = recode(phase, 
-                        "PF" = "P", 
-                        "BF" = "B", 
-                        "MF" = "M"))
 ```
 
 
