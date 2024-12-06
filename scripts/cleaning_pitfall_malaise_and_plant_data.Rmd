@@ -18,27 +18,25 @@ library(phyloseq)
 cleaning plants
 
 ```{r}
-here("")
-plants <- data.frame(read.csv(file = here("../")))
-
-plants <- data.frame(read.csv("data/plants/data_veg.csv", sep = ";")) %>% 
-  t() %>% 
-  data.frame() %>% 
-  row_to_names(1) %>% 
-  clean_names() %>% 
-  filter(naturtype != "Semi-naturlig eng") %>% 
-  rename("phase" = "fase") %>% 
+# we start with cleaning the plants. the raw data sheet contains a lot of information that we did not use in the paper
+plants <- data.frame(read.csv("data/raw_data/pitfall_malaise_plants/data_veg.csv", sep = ";")) |> 
+  t() |> 
+  data.frame() |> 
+  row_to_names(1) |> 
+  clean_names() |> 
+  filter(naturtype != "Semi-naturlig eng") |> 
+  rename("phase" = "fase") |> 
   mutate(phase = recode(phase, 
                        "PF" = "P", 
                        "BF" = "B", 
                        "MF" = "M"))
 
-sort(colnames(plants))
 
-mat <- plants %>% 
-  select(37:128) %>% 
-  mutate_at(vars(1:92), as.numeric) %>% 
-  replace(is.na(.), 0) %>% 
+mat <- plants |> 
+  # select and relevant columns
+  select(37:128) |> 
+  mutate_at(vars(1:92), as.numeric) |> 
+  replace(is.na(.), 0) |> 
   # filter out unwanted "taxa"
   select(-c(lyngarter_uten_rosslyng,
             andre_forvedete_arter,
@@ -46,9 +44,9 @@ mat <- plants %>%
             graminider,
             lav,
             moser, 
-            svart_liten_sopp_foto)) %>% 
+            svart_liten_sopp_foto)) |> 
   # replace norwegian names with scientific names
-  dplyr::rename("sigdmose_sp" = "dicranum_sp_sigdmose_sp") %>% 
+  dplyr::rename("sigdmose_sp" = "dicranum_sp_sigdmose_sp") |> 
   dplyr::rename(
     "Cerastium_fontanum" = "arve", 
     "Euphrasia_officinalis" = "augnetroyst", 
@@ -135,19 +133,20 @@ mat <- plants %>%
     "Potentilla_erecta" =  "tepperot",
     "Lotus_corniculatus" =  "tiriltunge",
     "Vaccinium_vitis-ideae" =  "tyttebaer"
-  ) %>% 
-  mutate(Dicranum = Dicranum_1 + Dicranum_2) %>% 
+  ) |> 
+  mutate(Dicranum = Dicranum_1 + Dicranum_2) |> 
   select(-Dicranum_1, -Dicranum_2)
 
+# prepare matrix acting as otu_table
 mat <- as.matrix(mat)
 
-sam <- plants %>% 
+# prepare sample data
+sam <- plants |> 
   select(phase, blokk, plott)
 
+# assemble phyloseq object
 ps <- phyloseq(otu_table(mat, taxa_are_rows = F), 
                sample_data(sam))
-
-saveRDS(ps, "data/plants/heathland-fire-plants.RDS")
 
 ```
 
@@ -156,20 +155,20 @@ cleaning plants functional groups
 
 ```{r}
 plants <- data.frame(read_xlsx("~/Downloads/BG2.0_data_vegetasjon_lgv.xlsx", 
-                               sheet = 2)) %>% 
-  slice(-c(6:42)) %>% 
-  t() %>% 
-  data.frame() %>% 
-  row_to_names(1) %>% 
-  clean_names() %>% 
-  filter(lyngheifase != "NA") %>% 
+                               sheet = 2)) |> 
+  slice(-c(6:42)) |> 
+  t() |> 
+  data.frame() |> 
+  row_to_names(1) |> 
+  clean_names() |> 
+  filter(lyngheifase != "NA") |> 
   mutate(across(busker_kratt:na_8, as.numeric))
 
 
   mutate(shrubs = c(einer + bjonnkam))
   
-  filter(naturtype != "Semi-naturlig eng") %>% 
-  rename("phase" = "fase") %>% 
+  filter(naturtype != "Semi-naturlig eng") |> 
+  rename("phase" = "fase") |> 
   mutate(phase = recode(phase, 
                         "PF" = "P", 
                         "BF" = "B", 
@@ -190,37 +189,37 @@ insects23 <- read_xlsx("~/Downloads/DNA barcoding insect malisetraps Nerlandsøy
 ## 2023
 insects23 <- read_xlsx("~/Downloads/DNA barcoding insect malisetraps Nerlandsøya 2022-2023.xlsx", sheet = "2023")
 
-insects23 %>%
-  arrange(-number_of_sequences) %>% 
+insects23 |>
+  arrange(-number_of_sequences) |> 
   filter(ID_confidence == "HIGH" | 
-           ID_confidence == "MODERATE") %>% 
+           ID_confidence == "MODERATE") |> 
   select(final_phylum,
     final_class,
     final_order, 
     final_family, 
     final_genus, 
     final_species, 
-    number_of_sequences) %>% 
+    number_of_sequences) |> 
   plyr::rename(c("final_phylum" = "phylum", 
          "final_class" = "class", 
          "final_order" = "order", 
          "final_family" = "family", 
          "final_genus" = "genus", 
          "final_species" = "species", 
-         "number_of_sequences" = "abundance")) %>% 
+         "number_of_sequences" = "abundance")) |> 
   mutate(taxa_sum = sum(abundance), 
-         .by = c(phylum, class, order, family, genus, species)) %>%
-  group_by(phylum, class, order, family, genus, species, taxa_sum) %>%
-  summarise() %>% 
-  arrange(-taxa_sum) %>% 
-  mutate(rownms = species) %>% 
-  column_to_rownames("rownms") %>% 
+         .by = c(phylum, class, order, family, genus, species)) |>
+  group_by(phylum, class, order, family, genus, species, taxa_sum) |>
+  summarise() |> 
+  arrange(-taxa_sum) |> 
+  mutate(rownms = species) |> 
+  column_to_rownames("rownms") |> 
   select(-taxa_sum) -> tax23; head(tax23)
 
 # otu_table:
-insects23 %>%
-  mutate(sampling_name = paste0(gsub("fase", "", insects23$Fase), "_", "02", "_", insects23$Blokk, "_", "2023"), .before = 1) %>%
-  arrange(-number_of_sequences) %>% 
+insects23 |>
+  mutate(sampling_name = paste0(gsub("fase", "", insects23$Fase), "_", "02", "_", insects23$Blokk, "_", "2023"), .before = 1) |>
+  arrange(-number_of_sequences) |> 
   select(sampling_name, 
          final_phylum,
          final_class,
@@ -228,7 +227,7 @@ insects23 %>%
          final_family, 
          final_genus, 
          final_species, 
-         number_of_sequences) %>% 
+         number_of_sequences) |> 
   plyr::rename(c("sampling_name" = "sample", 
                  "final_phylum" = "phylum", 
                  "final_class" = "class", 
@@ -236,25 +235,25 @@ insects23 %>%
                  "final_family" = "family", 
                  "final_genus" = "genus", 
                  "final_species" = "species", 
-                 "number_of_sequences" = "abundance")) %>% 
+                 "number_of_sequences" = "abundance")) |> 
   mutate(taxa_sum = sum(abundance), 
          .by = c(sample, 
-                 phylum, class, order, family, genus, species)) %>%
+                 phylum, class, order, family, genus, species)) |>
   group_by(sample, 
-           phylum, class, order, family, genus, species, taxa_sum) %>%
-  summarise() %>% 
-  arrange(-taxa_sum) %>%
-  ungroup() %>%
-  select(sample, species, taxa_sum) %>% 
+           phylum, class, order, family, genus, species, taxa_sum) |>
+  summarise() |> 
+  arrange(-taxa_sum) |>
+  ungroup() |>
+  select(sample, species, taxa_sum) |> 
   pivot_wider(names_from = sample,
-              values_from = taxa_sum) %>% 
-  replace(is.na(.), 0) %>% 
+              values_from = taxa_sum) |> 
+  replace(is.na(.), 0) |> 
   column_to_rownames("species") -> otu23; head(otu23)
 #
 
-insects23 %>% 
+insects23 |> 
   plyr::rename(c("Fase" = "phase", 
-         "number_of_sequences" = "read_abundance")) %>%
+         "number_of_sequences" = "read_abundance")) |>
   mutate(sample = paste0(sub("fase", "", phase), "_02_", Blokk, "_", "2023"), 
          phase = sub("Byggfase", "B", phase),
          phase = sub("Modenfase", "M", phase),
@@ -262,17 +261,17 @@ insects23 %>%
          comment_at_check_in = NA, 
          year = "2023", 
          period = "2", 
-         trap_short_name = "MF1") %>% 
+         trap_short_name = "MF1") |> 
   summarise(read_abundance = sum(read_abundance), 
-            .by = c(phase, sample, period, trap_short_name, year, comment_at_check_in)) %>% 
+            .by = c(phase, sample, period, trap_short_name, year, comment_at_check_in)) |> 
   select(phase, 
          sample, 
          period, 
          read_abundance, 
          trap_short_name,
          year, 
-         comment_at_check_in) %>% 
-  group_by_all() %>%
+         comment_at_check_in) |> 
+  group_by_all() |>
   reframe() -> sam23; sam23
 
 #
@@ -289,25 +288,25 @@ saveRDS(ps23, here("data/insects/heathland-fire-insects.RDS"))
 cleaning pitfall traps
 
 ```{r}
-walk <- readxl::read_excel(here("data/walking_arthropods/walking_arthropods_2023.xlsx")) %>% 
-  rename("phase" = "Fase") %>% 
+walk <- readxl::read_excel(here("data/walking_arthropods/walking_arthropods_2023.xlsx")) |> 
+  rename("phase" = "Fase") |> 
   select(-c(
     Blokk, 
     Cup, 
     Periode
   ))
 
-sam <- walk %>% 
-  select(phase) %>% 
+sam <- walk |> 
+  select(phase) |> 
   mutate(phase = sub("Pioner", "P", phase), 
          phase = sub("Bygg", "B", phase), 
-         phase = sub("Moden", "M", phase)) %>% 
+         phase = sub("Moden", "M", phase)) |> 
   mutate(dummy = "dummy")
 
 sam <- sample_data(sam)
 
-otu <- walk %>% 
-  select(-phase) %>% 
+otu <- walk |> 
+  select(-phase) |> 
   replace(is.na(.), 0)
 
 otu <- otu_table(otu, taxa_are_rows = F)  
