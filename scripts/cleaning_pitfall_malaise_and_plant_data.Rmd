@@ -316,31 +316,41 @@ saveRDS(ps, here("data/clean_data/heathland-fire-malaise.RDS"))
 cleaning pitfall traps
 
 ```{r}
-walk <- read_excel(here("data/walking_arthropods/walking_arthropods_2023.xlsx")) |> 
+# this data sheet contains a lot of information we did not use in the paper. 
+(pit <- read_excel(here("data/raw_data/pitfall_malaise_plants/pitfall_traps_2023.xlsx")) |> 
   rename("phase" = "Fase") |> 
   select(-c(
     Blokk, 
     Cup, 
     Periode
-  ))
+  )) %>% 
+  mutate(sample = paste0("sa", 1:nrow(.)), .before = 1) |> 
+  column_to_rownames("sample"))
 
-sam <- walk |> 
+# prepare sample data
+(sam <- pit |> 
   select(phase) |> 
   mutate(phase = sub("Pioner", "P", phase), 
          phase = sub("Bygg", "B", phase), 
-         phase = sub("Moden", "M", phase)) |> 
-  mutate(dummy = "dummy")
+         phase = sub("Moden", "M", phase))) 
 
-sam <- sample_data(sam)
+(sam <- sample_data(sam))
 
-otu <- walk |> 
-  select(-phase) |> 
-  replace(is.na(.), 0)
+# construct a matrix equivalent to an otu table in a phyloseq object 
+(otu <- pit |> 
+  select(-phase) %>% 
+  replace(is.na(.), 0))
 
-otu <- otu_table(otu, taxa_are_rows = F)  
+(otu <- otu_table(otu, taxa_are_rows = F))  
 
-walk <- phyloseq(otu, sam); walk
+# construct a data frame equivalent to a taxonomic table in a phyloseq object 
+(tax <- data.frame(
+  row.names = colnames(pit), 
+  "Order" = colnames(pit)) |> 
+   filter(Order != "phase")) 
 
-saveRDS(walk, here("data/walking_arthropods/heathland-fire-walking-arthropods.RDS"))
+# assemble phyloseq object
+ps <- phyloseq(otu, sam, tax)
+
 ```
 

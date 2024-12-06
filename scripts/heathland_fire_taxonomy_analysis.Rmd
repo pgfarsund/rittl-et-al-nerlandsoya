@@ -417,7 +417,7 @@ nemtax %>%
 ```
 
 
-# walking arthropods
+# pitfall traps
 ```{r}
 
 walk <- readRDS(here("data/walking_arthropods/heathland-fire-walking-arthropods.RDS")); walk
