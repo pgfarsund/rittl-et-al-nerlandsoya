@@ -22,7 +22,7 @@ library(ggpubr)
 ```
 
 
-function returning plot
+define function returning plot of relative abundances
 ```{r}
 plot_top_relab <- function(ps, # a phyloseq object
                            taxlevel, # the taxonomic level you want to plot
@@ -122,8 +122,7 @@ plot_top_relab <- function(ps, # a phyloseq object
 }
 ```
 
-
-function returning dataframe
+define function returning data frame with relative abundances
 ```{r}
 get_top_relab <- function(ps, # a phyloseq object
                           taxlevel, # the taxonomic level you want to plot
@@ -180,31 +179,26 @@ get_top_relab <- function(ps, # a phyloseq object
 }
 ```
 
-
-bacteria
+plants
 ```{r}
-bacteria <- readRDS(here("data/clean_data/heathland-fire-bacteria.RDS"))
-bacteria
+plants <- readRDS("data/clean_data/heathland-fire-plants.RDS")
+plants <- prune_taxa(taxa_sums(plants) > 0, plants)
 
-# normalize the number of reads per sample:
-bacrar <- rarefy_even_depth(bacteria,
-  rngseed = 123,
-  replace = F,
-  trimOTUs = T,
-  sample.size = 18963
-)
-bacteria
-bacrar
-
-bactaxplot <- plot_top_relab(
-  ps = bacrar, taxlevel = "Phylum",
+# make plot
+(plataxplot <- plot_top_relab(
+  ps = plants, taxlevel = "functional_groups",
   how_many_taxa = 10, group = "phase"
 ) +
-  ggtitle("Bacteria")
+  ggtitle("Plants") +
+  guides(
+    fill = guide_legend(title = "Species", ncol = 3, nrow = 4, ),
+    color = guide_legend(title = "Species", ncol = 3, nrow = 4)
+  ))
 
+# get relative abundances
 data.frame(get_top_relab(
-  ps = bacrar,
-  taxlevel = "Phylum",
+  ps = plants,
+  taxlevel = "functional_groups",
   how_many_taxa = 10,
   group = "phase"
 )) |>
@@ -213,6 +207,110 @@ data.frame(get_top_relab(
           -relative_abundance)
 ```
 
+malaise traps
+```{r}
+malaise <- readRDS(here("data/clean_data/heathland-fire-malaise.RDS"))
+malaise <- prune_taxa(taxa_sums(malaise) > 0, malaise)
+
+malrar <- rarefy_even_depth(malaise,
+  rngseed = 123,
+  replace = F,
+  trimOTUs = T,
+  sample.size = min(sample_sums(malaise))
+)
+
+(maltaxplot <- plot_top_relab(
+  ps = malrar, taxlevel = "order",
+  how_many_taxa = 10, group = "phase"
+) +
+  ggtitle("Malaise traps") +
+  coord_flip(ylim = c(0, 0.425)) +
+  guides(
+    fill = guide_legend(title = "Order", ncol = 3, nrow = 4),
+    color = guide_legend(title = "Order", ncol = 3, nrow = 4)
+  ))
+
+data.frame(get_top_relab(
+  ps = malrar,
+  taxlevel = "order",
+  how_many_taxa = 10,
+  group = "phase"
+)) |>
+  select(-abundance) |> 
+  arrange(factor(phase, levels = c("P", "B", "M")), 
+          -relative_abundance)
+
+```
+
+pitfall traps
+```{r}
+pit <- readRDS(here("data/clean_data/heathland-fire-pitfall.RDS"))
+pit <- prune_taxa(taxa_sums(pit) > 0, pit)
+
+pitrar <- rarefy_even_depth(pit,
+  rngseed = 123,
+  replace = F,
+  trimOTUs = T,
+  sample.size = 10
+)
+
+(pittaxplot <- plot_top_relab(
+  ps = pitrar, taxlevel = "Order",
+  how_many_taxa = 10, group = "phase"
+) +
+  ggtitle("Pitfall traps") +
+  guides(
+    fill = guide_legend(title = "Order", ncol = 3, nrow = 4),
+    color = guide_legend(title = "Order", ncol = 3, nrow = 4)
+  ))
+
+data.frame(get_top_relab(
+  ps = pitrar,
+  taxlevel = "Order",
+  how_many_taxa = 10,
+  group = "phase"
+)) |>
+  select(-abundance) |> 
+  arrange(factor(phase, levels = c("P", "B", "M")), 
+          -relative_abundance)
+```
+
+nematodes
+```{r}
+nematodes <- readRDS(here("data/clean_data/heathland-fire-nematodes.RDS"))
+nematodes <- prune_taxa(taxa_sums(nematodes) > 0, nematodes)
+
+nemrar <- rarefy_even_depth(nematodes,
+  rngseed = 123,
+  replace = F,
+  trimOTUs = T,
+  sample.size = min(sample_sums(nematodes))
+)
+nematodes
+nemrar
+
+(nemtaxplot <- plot_top_relab(
+  ps = nemrar,
+  taxlevel = "genus",
+  how_many_taxa = 10,
+  group = "phase"
+) +
+  ggtitle("Nematodes") +
+  guides(
+    fill = guide_legend(title = "Genus", ncol = 3, nrow = 4),
+    color = guide_legend(title = "Genus", ncol = 3, nrow = 4)
+  ))
+
+data.frame(get_top_relab(
+  ps = nemrar,
+  taxlevel = "genus",
+  how_many_taxa = 10,
+  group = "phase"
+)) |>
+  select(-abundance) |> 
+  arrange(factor(phase, levels = c("P", "B", "M")), 
+          -relative_abundance)
+```
 
 fungi
 ```{r}
@@ -241,12 +339,11 @@ funrar <- rarefy_even_depth(fungi,
 )
 
 # make relative abundance figure
-funtaxplot <- plot_top_relab(
+(funtaxplot <- plot_top_relab(
   ps = funrar, taxlevel = "Class",
   how_many_taxa = 11, group = "phase"
 ) +
-  ggtitle("Fungi")
-funtaxplot
+  ggtitle("Fungi"))
 
 data.frame(get_top_relab(
   ps = funrar,
@@ -259,36 +356,27 @@ data.frame(get_top_relab(
           -relative_abundance)
 ```
 
-
-nematodes
+bacteria
 ```{r}
-nematodes <- readRDS(here("data/clean_data/heathland-fire-nematodes.RDS"))
-nematodes <- prune_taxa(taxa_sums(nematodes) > 0, nematodes)
+bacteria <- readRDS(here("data/clean_data/heathland-fire-bacteria.RDS"))
 
-nemrar <- rarefy_even_depth(nematodes,
+# normalize the number of reads per sample:
+bacrar <- rarefy_even_depth(bacteria,
   rngseed = 123,
   replace = F,
   trimOTUs = T,
-  sample.size = min(sample_sums(nematodes))
+  sample.size = 18963
 )
-nematodes
-nemrar
 
-nemtaxplot <- plot_top_relab(
-  ps = nemrar,
-  taxlevel = "genus",
-  how_many_taxa = 10,
-  group = "phase"
+bactaxplot <- plot_top_relab(
+  ps = bacrar, taxlevel = "Phylum",
+  how_many_taxa = 10, group = "phase"
 ) +
-  ggtitle("Nematodes") +
-  guides(
-    fill = guide_legend(title = "Genus", ncol = 3, nrow = 4),
-    color = guide_legend(title = "Genus", ncol = 3, nrow = 4)
-  )
+  ggtitle("Bacteria")
 
 data.frame(get_top_relab(
-  ps = nemrar,
-  taxlevel = "genus",
+  ps = bacrar,
+  taxlevel = "Phylum",
   how_many_taxa = 10,
   group = "phase"
 )) |>
@@ -296,102 +384,6 @@ data.frame(get_top_relab(
   arrange(factor(phase, levels = c("P", "B", "M")), 
           -relative_abundance)
 ```
-
-
-walking arthropods
-```{r}
-pit <- readRDS(here("data/clean_data/heathland-fire-pitfall.RDS"))
-pit <- prune_taxa(taxa_sums(pit) > 0, pit)
-
-pitrar <- rarefy_even_depth(pit,
-  rngseed = 123,
-  replace = F,
-  trimOTUs = T,
-  sample.size = 10
-)
-
-pittaxplot <- plot_top_relab(
-  ps = pitrar, taxlevel = "Order",
-  how_many_taxa = 10, group = "phase"
-) +
-  ggtitle("Pitfall traps") +
-  guides(
-    fill = guide_legend(title = "Order", ncol = 3, nrow = 4),
-    color = guide_legend(title = "Order", ncol = 3, nrow = 4)
-  )
-
-data.frame(get_top_relab(
-  ps = pitrar,
-  taxlevel = "Order",
-  how_many_taxa = 10,
-  group = "phase"
-)) |>
-  select(-abundance) |> 
-  arrange(factor(phase, levels = c("P", "B", "M")), 
-          -relative_abundance)
-```
-
-
-flying insects
-```{r}
-insects <- readRDS(here("data/insects/heathland-fire-insects.RDS"))
-insects
-insects <- prune_taxa(taxa_sums(insects) > 0, insects)
-insects
-
-inrar <- rarefy_even_depth(insects,
-  rngseed = 123,
-  replace = F,
-  trimOTUs = T,
-  sample.size = min(sample_sums(insects))
-)
-
-(intaxplot <- plot_top_relab(
-  ps = inrar, taxlevel = "order",
-  how_many_taxa = 10, group = "phase"
-) +
-  ggtitle("Malaise traps") +
-  coord_flip(ylim = c(0, 0.425)) +
-  guides(
-    fill = guide_legend(title = "Order", ncol = 3, nrow = 4),
-    color = guide_legend(title = "Order", ncol = 3, nrow = 4)
-  ))
-
-relab <- get_top_relab(
-  ps = inrar, taxlevel = "order",
-  how_many_taxa = 10,
-  group = "phase"
-)
-relab
-```
-
-
-plants
-```{r}
-plants <- readRDS("data/plants/heathland-fire-plants.RDS")
-plants <- prune_taxa(taxa_sums(plants) > 0, plants)
-plants
-
-# make plot
-(plataxplot <- plot_top_relab(
-  ps = plants, taxlevel = "species",
-  how_many_taxa = 10, group = "phase"
-) +
-  ggtitle("Plants") +
-  guides(
-    fill = guide_legend(title = "Species", ncol = 3, nrow = 4, ),
-    color = guide_legend(title = "Species", ncol = 3, nrow = 4)
-  ))
-
-# get relative abundances
-relab <- get_top_relab(
-  ps = plants, taxlevel = "functional_groups",
-  how_many_taxa = ntaxa(plants),
-  group = "phase"
-)
-relab
-```
-
 
 arrange the plots
 ```{r}
@@ -399,8 +391,8 @@ library(ggpubr)
 
 ggarrange(
   plataxplot,
-  intaxplot,
-  wataxplot,
+  maltaxplot,
+  pittaxplot,
   nemtaxplot,
   funtaxplot,
   bactaxplot,
@@ -415,5 +407,5 @@ ggarrange(
     1, 1, 1
   )
 )
-# 7 x 17.5
+# save as pdf landscape 7 x 17.5
 ```

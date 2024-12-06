@@ -6,7 +6,6 @@ output: html_document
 ---
 
 load library
-
 ```{r}
 library(here)
 library(janitor)
@@ -15,9 +14,7 @@ library(phyloseq)
 library(readxl)
 ```
 
-
 cleaning plants
-
 ```{r}
 
 plants <- data.frame(read.csv("data/raw_data/pitfall_malaise_plants/data_veg.csv", sep = ";")) |>
@@ -195,7 +192,9 @@ tax <- data.frame(species = colnames(mat)) |>
 
 # prepare sample data
 sam <- plants |>
-  select(phase, blokk, plott)
+  mutate(prevent_merging_trouble = "prevent_merging_trouble") |>
+  select(phase,
+         prevent_merging_trouble)
 
 # assemble phyloseq object
 ps <- phyloseq(
@@ -209,9 +208,7 @@ ps <- phyloseq(
 
 ```
 
-
 cleaning malaise traps
-
 ```{r}
 # this data sheet contains a lot of information we did not use in the paper. 
 insects23 <- read_xlsx("data/raw_data/pitfall_malaise_plants/DNA_metabarcoding_insect_Nerlandsoya.xlsx", sheet = "2023")
@@ -288,16 +285,13 @@ insects23 |>
          comment_at_check_in = NA, 
          year = "2023", 
          period = "2", 
-         trap_short_name = "MF1") |> 
+         trap_short_name = "MF1", 
+         prevent_merging_trouble = "prevent_merging_trouble") |> 
   summarise(read_abundance = sum(read_abundance), 
-            .by = c(phase, sample, period, trap_short_name, year, comment_at_check_in)) |> 
-  select(phase, 
-         sample, 
-         period, 
-         read_abundance, 
-         trap_short_name,
-         year, 
-         comment_at_check_in) |> 
+            .by = c(phase, sample, period, trap_short_name, year, comment_at_check_in, prevent_merging_trouble)) |> 
+  select(sample, 
+         phase,
+         prevent_merging_trouble) |> 
   group_by_all() |>
   reframe() -> sam23
 
@@ -309,12 +303,9 @@ sample_names(sam) <- sam$sample
 
 ps <- phyloseq(tax, otu, sam)
 
-saveRDS(ps, here("data/clean_data/heathland-fire-malaise.RDS"))
 ```
 
-
 cleaning pitfall traps
-
 ```{r}
 # this data sheet contains a lot of information we did not use in the paper. 
 (pit <- read_excel(here("data/raw_data/pitfall_malaise_plants/pitfall_traps_2023.xlsx")) |> 
@@ -332,7 +323,8 @@ cleaning pitfall traps
   select(phase) |> 
   mutate(phase = sub("Pioner", "P", phase), 
          phase = sub("Bygg", "B", phase), 
-         phase = sub("Moden", "M", phase))) 
+         phase = sub("Moden", "M", phase), 
+         prevent_merging_trouble = "prevent_merging_trouble")) 
 
 (sam <- sample_data(sam))
 
@@ -354,7 +346,6 @@ colnames(tax) <- "Order"
 (taxa_names(tax) <- tax[,"Order"])
 
 # assemble phyloseq object
-(ps <- phyloseq(otu, sam, tax))
+(ps <- phyloseq(otu, tax, sample_data(sam)))
 
 ```
-
