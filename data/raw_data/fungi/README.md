@@ -1,1 +1,0 @@
-.fastq files for fungi.
