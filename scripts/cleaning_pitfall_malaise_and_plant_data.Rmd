@@ -15,6 +15,7 @@ library(phyloseq)
 library(readxl)
 ```
 
+
 cleaning plants
 
 ```{r}
@@ -212,20 +213,13 @@ ps <- phyloseq(
 cleaning malaise traps
 
 ```{r}
-insects23 <- read_xlsx("~/Downloads/DNA barcoding insect malisetraps Nerlandsøya 2022-2023.xlsx", sheet = "2023")
+# this data sheet contains a lot of information we did not use in the paper. 
+insects23 <- read_xlsx("data/raw_data/pitfall_malaise_plants/DNA_metabarcoding_insect_Nerlandsoya.xlsx", sheet = "2023")
 
-# these datasets are pretty messy. they look like the result of phyloseq::psmelt()
-# reformat the dataframes to phyloseq objects.
-
-# we will only use data from 2023. 
-
-## 2023
-insects23 <- read_xlsx("~/Downloads/DNA barcoding insect malisetraps Nerlandsøya 2022-2023.xlsx", sheet = "2023")
-
+# construct a data frame equivalent to a taxonomic table in a phyloseq object
 insects23 |>
   arrange(-number_of_sequences) |> 
-  filter(ID_confidence == "HIGH" | 
-           ID_confidence == "MODERATE") |> 
+  filter(ID_confidence == "HIGH" | ID_confidence == "MODERATE") |> 
   select(final_phylum,
     final_class,
     final_order, 
@@ -247,9 +241,9 @@ insects23 |>
   arrange(-taxa_sum) |> 
   mutate(rownms = species) |> 
   column_to_rownames("rownms") |> 
-  select(-taxa_sum) -> tax23; head(tax23)
+  select(-taxa_sum) -> tax23
 
-# otu_table:
+# construct a matrix equivalent to an otu table in a phyloseq object
 insects23 |>
   mutate(sampling_name = paste0(gsub("fase", "", insects23$Fase), "_", "02", "_", insects23$Blokk, "_", "2023"), .before = 1) |>
   arrange(-number_of_sequences) |> 
@@ -279,11 +273,11 @@ insects23 |>
   ungroup() |>
   select(sample, species, taxa_sum) |> 
   pivot_wider(names_from = sample,
-              values_from = taxa_sum) |> 
+              values_from = taxa_sum) %>%
   replace(is.na(.), 0) |> 
-  column_to_rownames("species") -> otu23; head(otu23)
-#
+  column_to_rownames("species") -> otu23
 
+# prepare sample data
 insects23 |> 
   plyr::rename(c("Fase" = "phase", 
          "number_of_sequences" = "read_abundance")) |>
@@ -305,23 +299,24 @@ insects23 |>
          year, 
          comment_at_check_in) |> 
   group_by_all() |>
-  reframe() -> sam23; sam23
+  reframe() -> sam23
 
 #
-tax <- tax_table(as.matrix(tax23)); head(taxa_names(tax))
-otu <- otu_table(otu23, taxa_are_rows = T); head(taxa_names(otu)); sample_names(otu)
-sam <- sample_data(sam23); sample_names(sam) <- sam$sample; sample_names(sam)
+tax <- tax_table(as.matrix(tax23))
+otu <- otu_table(otu23, taxa_are_rows = T)
+sam <- sample_data(sam23)
+sample_names(sam) <- sam$sample
 
-ps23 <- phyloseq(tax, otu, sam); ps23
+ps <- phyloseq(tax, otu, sam)
 
-saveRDS(ps23, here("data/insects/heathland-fire-insects.RDS"))
+saveRDS(ps, here("data/clean_data/heathland-fire-malaise.RDS"))
 ```
 
 
 cleaning pitfall traps
 
 ```{r}
-walk <- readxl::read_excel(here("data/walking_arthropods/walking_arthropods_2023.xlsx")) |> 
+walk <- read_excel(here("data/walking_arthropods/walking_arthropods_2023.xlsx")) |> 
   rename("phase" = "Fase") |> 
   select(-c(
     Blokk, 
