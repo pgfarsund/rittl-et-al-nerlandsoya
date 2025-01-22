@@ -1,0 +1,472 @@
+---
+title: "alpha_diversity_2.0"
+author: "pgfarsund"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+load packages
+
+```{r}
+library(here)
+library(tidyverse)
+library(phyloseq)
+library(ggpubr)
+library(janitor)
+library(emmeans)
+library(broom)
+library(glmmTMB)
+library(performance)
+
+set.seed(123)
+```
+
+define function to get alpha diversity stats
+
+```{r}
+get_alpha_stats <- function(ps){
+  tibble(
+  estimate_richness(ps,
+    measures = c("Observed", "Shannon")
+  ),
+  data.frame(ps@sam_data)
+) |>
+  select(Observed, Shannon, phase) |>
+  group_by(phase) |>
+  mutate(
+    group = "Plants",
+    N = vctrs::vec_count(phase)$count,
+    q1_richness = quantile(Observed)[2],
+    med_richness = quantile(Observed)[3],
+    q3_richness = quantile(Observed)[4],
+    q1_shannon = quantile(Shannon)[2],
+    med_shannon = quantile(Shannon)[3],
+    q3_shannon = quantile(Shannon)[4],
+    richness = paste0(med_richness, " (IQR ", round(q3_richness-q1_richness, digits = 2), ")"), 
+    shannon = paste0(round(med_shannon, digits = 2), " (IQR ", round(q3_shannon-q1_shannon, digits = 2), ")")
+  ) |>
+  select(group, phase, richness, shannon, N) |>
+  distinct() |>
+  arrange(phase = factor(phase, levels = c("P", "B", "M")))
+}
+
+```
+
+plants
+
+```{r}
+# load phyloseq object:
+plants <- readRDS(here("data/clean_data/heathland-fire-plants.RDS"))
+
+# calculate alpha diversity measures and find medians and IQR:
+get_alpha_stats(plants)
+
+# test whether differences in alpha diversity are significant between phases:
+data.frame(
+  estimate_richness(plants,
+    measures = c("Observed", "Shannon")
+  ),
+  data.frame(plants@sam_data)
+) -> df
+
+### RICHNESS
+plantrichmod <- glmmTMB(Observed ~ phase + (1|blokk/plott), 
+               data = df, family = poisson(link = "log")) # fit model
+summary(plantrichmod)
+
+check_model(plantrichmod) # seems ok but a bit off
+check_overdispersion(plantrichmod) # no overdispersion detected
+check_singularity(plantrichmod) # model is a singular fit
+
+# the singular fit is likely a symptom of our random "blokk" effect having few levels. from the output of summary(mod) we see that the random effect of "blokk" explains <0.000 percent of the variance in the data. to get past this issue, we apply a Gamma prior as recommended in Chung et al. 2013 (https://doi.org/10.1007/s11336-013-9328-2)
+
+plantrichmod <- update(plantrichmod, 
+                       priors = data.frame(prior = "gamma(1, 2.5)",  
+                                           class = "ranef"))
+check_model(plantrichmod) # not great, but ok
+check_singularity(plantrichmod) # the model is no longer a singular fit
+summary(mod)
+
+# do a pairwise comparison with emmeans
+(plantrichmod <- data.frame(emmeans(plantrichmod, specs = pairwise ~ phase)$contrast) |> 
+  mutate(metric = "Richness", .before = 1))
+
+### SHANNON
+plantshamod <- glmmTMB(Shannon ~ phase + (1|blokk), 
+               data = df, family = gaussian(link = "identity"))
+summary(plantshamod)
+check_model(plantshamod) # not great, but ok
+
+# do a pairwise comparison with emmeans
+(plantshamod <- data.frame(emmeans(plantshamod, specs = pairwise ~ phase)$contrast) |> 
+  mutate(metric = "Shannon", .before = 1))
+
+# make boxplots to go with the model results
+df |>
+  ggplot(aes(
+    x = factor(phase, levels = c("P", "B", "M")),
+    y = Observed,
+    fill = factor(phase, levels = c("P", "B", "M")),
+    color = factor(phase, levels = c("P", "B", "M"))
+  )) +
+  theme_classic() +
+  geom_boxplot(linewidth = 0.6, alpha = 1, outlier.shape = NA, width = 0.5) +
+  geom_jitter(
+    size = 2, shape = 21, stroke = 1, alpha = 0.5,
+    position = position_jitter(height = 0, width = 0.3)
+  ) +
+  theme(
+    legend.position = "none",
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(color = "white"),
+    axis.ticks.x = element_blank()
+  ) +
+  scale_fill_brewer(palette = "Greens") +
+  scale_color_manual(values = rep("black", times = length(unique(plants@sam_data$phase)))) +
+  ylab("Richness") +
+  ggtitle("Plants") +
+  geom_segment(
+    x = 1, xend = 2,
+    y = 25, yend = 25
+  ) +
+  annotate(
+    geom = "text", label = "**", size = 6,
+    x = 1.5, y = 25.5
+  ) +
+  geom_segment(
+    x = 1, xend = 3,
+    y = 23, yend = 23
+  ) +
+  annotate(
+    geom = "text", label = "*", size = 6,
+    x = 2, y = 23.5
+  ) +
+  coord_cartesian(ylim = c(9, 27)) -> plarich
+plarich
+
+df |>
+  ggplot(aes(
+    x = factor(phase, levels = c("P", "B", "M")),
+    y = Shannon,
+    fill = factor(phase, levels = c("P", "B", "M")),
+    color = factor(phase, levels = c("P", "B", "M"))
+  )) +
+  theme_classic() +
+  geom_boxplot(linewidth = 0.6, alpha = 1, outlier.shape = NA, width = 0.5) +
+  geom_jitter(
+    size = 2, shape = 21, stroke = 1, alpha = 0.5,
+    position = position_jitter(height = 0, width = 0.3)
+  ) +
+  theme(
+    legend.position = "none",
+    axis.title.x = element_blank()
+  ) +
+  scale_fill_brewer(palette = "Greens") +
+  scale_color_manual(values = rep("black", times = length(unique(plants@sam_data$phase)))) +
+  ylab("Shannon") +
+  ggtitle(" ") +
+  geom_segment(
+    x = 1, xend = 2,
+    y = 3.25, yend = 3.25
+  ) +
+  annotate(
+    geom = "text", label = "**", size = 6,
+    x = 1.5, y = 3.3
+  ) +
+  geom_segment(
+    x = 1, xend = 3,
+    y = 3, yend = 3
+  ) +
+  annotate(
+    geom = "text", label = ".", size = 6,
+    x = 2, y = 3.2
+  ) +
+  coord_cartesian(ylim = c(1.5, 3.4)) -> plasha
+plasha
+```
+
+malaise traps
+
+```{r}
+# load and normalise phyloseq object:
+malaise <- readRDS(here("data/clean_data/heathland-fire-malaise.RDS"))
+malaise <- prune_taxa(taxa_sums(malaise) > 0, malaise)
+
+malrar <- rarefy_even_depth(malaise,
+  rngseed = 123,
+  replace = F,
+  trimOTUs = T,
+  sample.size = min(sample_sums(malaise))
+)
+
+# calculate alpha diversity measures and find medians and IQR:
+get_alpha_stats(malrar)
+
+# test whether differences in alpha diversity are significant between phases:
+data.frame(
+  estimate_richness(malrar,
+    measures = c("Observed", "Shannon")
+  ),
+  data.frame(malrar@sam_data)
+) -> df
+
+# make boxplots
+(df |>
+  ggplot(aes(
+    x = factor(phase, levels = c("P", "B", "M")),
+    y = Observed,
+    fill = factor(phase, levels = c("P", "B", "M")),
+    color = factor(phase, levels = c("P", "B", "M"))
+  )) +
+  theme_classic() +
+  geom_point(size = 2, shape = 21, stroke = 1, alpha = 0.8) +
+  theme(
+    legend.position = "none",
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(color = "white"),
+    axis.ticks.x = element_blank()
+  ) +
+  scale_fill_manual(values = c("#FDE0EF", "#DE77AE", "#C51B7D")) +
+  scale_color_manual(values = rep("black", times = length(unique(malrar@sam_data$phase)))) +
+  ylab(" ") +
+  ggtitle("Malaise traps") -> inrich)
+
+(df |>
+  ggplot(aes(
+    x = factor(phase, levels = c("P", "B", "M")),
+    y = Shannon,
+    fill = factor(phase, levels = c("P", "B", "M")),
+    color = factor(phase, levels = c("P", "B", "M"))
+  )) +
+  theme_classic() +
+  geom_point(size = 2, shape = 21, stroke = 1, alpha = 0.8) +
+  theme(
+    legend.position = "none",
+    axis.title.x = element_blank(),
+    plot.title = element_text(color = "white")
+  ) +
+  scale_fill_manual(values = c("#FDE0EF", "#DE77AE", "#C51B7D")) +
+  scale_color_manual(values = rep("black", times = length(unique(malrar@sam_data$phase)))) +
+  ylab(" ") +
+  ggtitle(" e") -> insha)
+
+(ggarrange(inrich, insha, nrow = 2) -> malaise_alphaplot)
+```
+
+pitfall traps
+
+```{r}
+# load and normalise phyloseq object:
+pit <- readRDS(here("data/clean_data/heathland-fire-pitfall.RDS"))
+
+pitrar <- rarefy_even_depth(pit,
+  rngseed = 123,
+  replace = F,
+  trimOTUs = T,
+  sample.size = 10
+)
+
+# calculate alpha diversity measures and find medians and IQR:
+get_alpha_stats(pitrar)
+
+# test whether differences in alpha diversity are significant between phases:
+(data.frame(
+  estimate_richness(pitrar,
+    measures = c("Observed", "Shannon")
+  ),
+  data.frame(pitrar@sam_data)
+) -> df)
+
+### RICHNESS
+pitrichmod <- glmmTMB(Observed ~ phase + (1|blokk/cup) + (1|periode), 
+               data = df, family = poisson(link = "log")) # fit model
+
+ranef(pitrichmod)
+summary(pitrichmod)
+diagnose(pitrichmod)
+#
+check_model(pitrichmod) # seems ok but a bit off
+check_overdispersion(pitrichmod) # no overdispersion detected
+check_singularity(pitrichmod) # model is a singular fit
+# we did not get a significant result, therefore we did not perform a pairwise comparison test
+
+df |>
+  ggplot(aes(
+    x = factor(phase, levels = c("P", "B", "M")),
+    y = Observed,
+    fill = factor(phase, levels = c("P", "B", "M")),
+    color = factor(phase, levels = c("P", "B", "M"))
+  )) +
+  theme_classic() +
+  geom_boxplot(linewidth = 0.6, alpha = 1, outlier.shape = NA, width = 0.5) +
+  geom_jitter(
+    size = 2, shape = 21, stroke = 1, alpha = 0.5,
+    position = position_jitter(height = 0, width = 0.3)
+  ) +
+  theme(
+    legend.position = "none",
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(color = "white"),
+    axis.ticks.x = element_blank()
+  ) +
+  scale_fill_manual(values = c("tan", "tan3", "tan4")) +
+  scale_color_manual(values = rep("black", times = length(unique(groundrar@sam_data$phase)))) +
+  ylab(" ") +
+  ggtitle("Pitfall traps") -> grorich
+grorich
+
+df |>
+  ggplot(aes(
+    x = factor(phase, levels = c("P", "B", "M")),
+    y = Shannon,
+    fill = factor(phase, levels = c("P", "B", "M")),
+    color = factor(phase, levels = c("P", "B", "M"))
+  )) +
+  theme_classic() +
+  geom_boxplot(linewidth = 0.6, alpha = 1, outlier.shape = NA, width = 0.5) +
+  geom_jitter(
+    size = 2, shape = 21, stroke = 1, alpha = 0.5,
+    position = position_jitter(height = 0, width = 0.3)
+  ) +
+  theme(
+    legend.position = "none",
+    axis.title.x = element_blank()
+  ) +
+  scale_fill_manual(values = c("tan", "tan3", "tan4")) +
+  scale_color_manual(values = rep("black", times = length(unique(groundrar@sam_data$phase)))) +
+  ylab(" ") +
+  ggtitle(" ") -> grosha
+grosha
+
+```
+
+nematodes
+```{r}
+# load and normalise phyloseq object:
+nematodes <- readRDS(here("data/clean_data/heathland-fire-nematodes.RDS"))
+
+nemrar <- rarefy_even_depth(nematodes,
+  rngseed = 123,
+  replace = F,
+  trimOTUs = T,
+  sample.size = min(sample_sums(nematodes))
+)
+
+# calculate alpha diversity measures and find medians and IQR:
+get_alpha_stats(nemrar)
+
+# test whether differences in alpha diversity are significant between phases:
+data.frame(
+  estimate_richness(nemrar,
+    measures = c("Observed", "Shannon")
+  ),
+  data.frame(nemrar@sam_data)
+) |> 
+  mutate(blokk = sapply(strsplit(Navn, split = '_', fixed = TRUE), `[`, 1)) -> df
+
+### RICHNESS
+nemrichmod <- glmmTMB(Observed ~ phase + (1|blokk) + (1|month), 
+               data = df, family = poisson(link = "log")) # fit model
+summary(nemrichmod)
+
+check_model(nemrichmod) # seems ok 
+check_overdispersion(nemrichmod) # no overdispersion detected
+check_singularity(nemrichmod) # model is a singular fit
+
+# the singular fit is likely a symptom of our random "blokk" effect having few levels. from the output of summary(mod) we see that the random effect of "blokk" explains <0.000 percent of the variance in the data. to get past this issue, we apply a Gamma prior as recommended in Chung et al. 2013 (https://doi.org/10.1007/s11336-013-9328-2)
+
+nemrichmod <- update(nemrichmod, 
+                       priors = data.frame(prior = "gamma(1, 2.5)",  
+                                           class = "ranef"))
+check_model(nemrichmod) # not great, but ok
+check_singularity(nemrichmod) # the model is no longer a singular fit
+summary(nemrichmod)
+
+# do a pairwise comparison with emmeans
+(nemrichmod <- data.frame(emmeans(nemrichmod, specs = pairwise ~ phase)$contrast) |> 
+  mutate(metric = "Richness", .before = 1))
+
+### SHANNON
+plantshamod <- glmmTMB(Shannon ~ phase + (1|blokk), 
+               data = df, family = gaussian(link = "identity"))
+summary(plantshamod)
+check_model(plantshamod) # not great, but ok
+
+# do a pairwise comparison with emmeans
+(plantshamod <- data.frame(emmeans(plantshamod, specs = pairwise ~ phase)$contrast) |> 
+  mutate(metric = "Shannon", .before = 1))
+
+
+# make boxlots to go with the model results
+df |>
+  mutate(
+    phase = sub("Pioner", "P", phase),
+    phase = sub("Bygg", "B", phase),
+    phase = sub("Moden", "M", phase)
+  ) |>
+  ggplot(aes(
+    x = factor(phase, levels = c("P", "B", "M")),
+    y = Observed,
+    fill = factor(phase, levels = c("P", "B", "M")),
+    color = factor(phase, levels = c("P", "B", "M"))
+  )) +
+  theme_classic() +
+  geom_boxplot(linewidth = 0.6, alpha = 1, outlier.shape = NA, width = 0.5) +
+  geom_jitter(
+    size = 2, shape = 21, stroke = 1, alpha = 0.5,
+    position = position_jitter(height = 0, width = 0.3)
+  ) +
+  theme(
+    legend.position = "none",
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(color = "white"),
+    axis.ticks.x = element_blank()
+  ) +
+  scale_fill_manual(values = c("#F7FBFF", "#9ECAE1", "#08519C")) +
+  scale_color_manual(values = rep("black", times = length(unique(nemrar@sam_data$phase)))) +
+  ylab(" ") +
+  ggtitle("Nematodes") -> nemrich
+nemrich
+
+df |>
+  mutate(
+    phase = sub("Pioner", "P", phase),
+    phase = sub("Bygg", "B", phase),
+    phase = sub("Moden", "M", phase)
+  ) |>
+  ggplot(aes(
+    x = factor(phase, levels = c("P", "B", "M")),
+    y = Shannon,
+    fill = factor(phase, levels = c("P", "B", "M")),
+    color = factor(phase, levels = c("P", "B", "M"))
+  )) +
+  theme_classic() +
+  geom_boxplot(linewidth = 0.6, alpha = 1, outlier.shape = NA, width = 0.5) +
+  geom_jitter(
+    size = 2, shape = 21, stroke = 1, alpha = 0.5,
+    position = position_jitter(height = 0, width = 0.3)
+  ) +
+  theme(
+    legend.position = "none",
+    axis.title.x = element_blank()
+  ) +
+  scale_fill_manual(values = c("#F7FBFF", "#9ECAE1", "#08519C")) +
+  scale_color_manual(values = rep("black", times = length(unique(nemrar@sam_data$phase)))) +
+  ylab(" ") +
+  ggtitle(" ") +
+  geom_segment(
+    x = 2, xend = 3,
+    y = 2.3, yend = 2.3
+  ) +
+  annotate(
+    geom = "text", label = "**", size = 6,
+    x = 2.5, y = 2.35
+  ) +
+  coord_cartesian(ylim = c(0.8, 2.4)) -> nemsha
+nemsha
+
+ggarrange(nemrich, nemsha, nrow = 2) -> nem_alphaplot
+nem_alphaplot
+```
+
+

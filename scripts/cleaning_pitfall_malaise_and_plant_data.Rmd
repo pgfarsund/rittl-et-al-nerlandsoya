@@ -193,7 +193,9 @@ tax <- data.frame(species = colnames(mat)) |>
 # prepare sample data
 sam <- plants |>
   mutate(prevent_merging_trouble = "prevent_merging_trouble") |>
-  select(phase,
+  select(phase, 
+         blokk,
+         plott,
          prevent_merging_trouble)
 
 # assemble phyloseq object
@@ -309,28 +311,26 @@ cleaning pitfall traps
 ```{r}
 # this data sheet contains a lot of information we did not use in the paper. 
 (pit <- read_excel(here("data/raw_data/pitfall_malaise_plants/pitfall_traps_2023.xlsx")) |> 
-  rename("phase" = "Fase") |> 
-  select(-c(
-    Blokk, 
-    Cup, 
-    Periode
-  )) %>% 
+  rename("phase" = "Fase") %>% 
+ # select(-c(Blokk, Cup, Periode)) %>% 
   mutate(sample = paste0("sa", 1:nrow(.)), .before = 1) |> 
   column_to_rownames("sample"))
 
 # prepare sample data
 (sam <- pit |> 
-  select(phase) |> 
+  clean_names() |> 
+  select(phase, blokk, cup, periode) |> 
   mutate(phase = sub("Pioner", "P", phase), 
          phase = sub("Bygg", "B", phase), 
          phase = sub("Moden", "M", phase), 
-         prevent_merging_trouble = "prevent_merging_trouble")) 
+         prevent_merging_trouble = "prevent_merging_trouble", 
+         blokk = paste0("B", blokk))) 
 
 (sam <- sample_data(sam))
 
 # construct a matrix equivalent to an otu table in a phyloseq object 
 (otu <- pit |> 
-  select(-phase) %>% 
+  select(-c(phase, Blokk, Cup, Periode)) %>% 
   replace(is.na(.), 0))
 
 (otu <- otu_table(otu, taxa_are_rows = F))  
@@ -339,7 +339,7 @@ cleaning pitfall traps
 (tax <- data.frame(
   row.names = colnames(pit), 
   "Order" = colnames(pit)) |> 
-   filter(Order != "phase")) 
+   filter(Order != c("phase", "Blokk", "Cup", "Periode"))) 
 
 tax <- tax_table(tax)
 colnames(tax) <- "Order"

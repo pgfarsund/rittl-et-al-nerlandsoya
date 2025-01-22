@@ -511,7 +511,7 @@ library(readxl)
 # fix each component of the phykoseq object:
 tax <- tax_table(as.matrix(nematode_taxonomic_table))
 asv <- otu_table(final_seqtab, taxa_are_rows = FALSE)
-sam <- read.csv(here("data/sample_data.csv")) %>%
+sam <- read.csv(here("data/raw_data/sample_data_for_bacteria_fungi_nematodes.csv")) %>%
   mutate(
     month = c(
       rep(c("mai", "august"), each = 12), # add month as a variable
@@ -519,9 +519,11 @@ sam <- read.csv(here("data/sample_data.csv")) %>%
     ),
     phase = c(rep(rep(c("Bygg", "Moden", "Pioner", "Seminaturlig eng"), # add successional phase as a variable
       each = 3
-    ), times = 2), "blank")
+    ), times = 2), "blank"),
+    sample_plot = lapply(strsplit(Navn, split = '_', fixed = TRUE), `[`, 1)
   ) %>%
   dplyr::slice(-25) %>%
+  select(-c(X, Navn)) |> 
   filter(phase != "Seminaturlig eng")
 sam <- sample_data(sam)
 
