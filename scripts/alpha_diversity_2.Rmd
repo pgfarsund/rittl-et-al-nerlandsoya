@@ -382,10 +382,11 @@ alpha_stats_nematodes <- get_alpha_stats(nemrar) |>
 # test whether differences in alpha diversity are significant between phases:
 data.frame(
   estimate_richness(nemrar,
-    measures = c("Richness", "Shannon")
+    measures = c("Observed", "Shannon")
   ),
   data.frame(nemrar@sam_data)
 ) |> 
+  rename(Richness = Observed) |> 
   mutate(blokk = sapply(strsplit(Navn, split = '_', fixed = TRUE), `[`, 1)) -> df
 
 ### RICHNESS
@@ -520,10 +521,11 @@ alpha_stats_fungi <- get_alpha_stats(funrar) |>
 # test whether differences in alpha diversity are significant between phases:
 data.frame(
   estimate_richness(funrar,
-    measures = c("Richness", "Shannon")
+    measures = c("Observed", "Shannon")
   ),
   data.frame(funrar@sam_data)
 ) |> 
+  rename(Richness = Observed) |>
   mutate(blokk = sapply(strsplit(Navn, split = '_', fixed = TRUE), `[`, 1)) -> df
 
 ### RICHNESS

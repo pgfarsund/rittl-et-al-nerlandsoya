@@ -11,6 +11,7 @@ load required packages
 ```{r}
 library(here)
 library(tidyverse)
+library(BiodiversityR)
 library(phyloseq)
 library(ggpubr)
 library(MicEco)
@@ -25,7 +26,8 @@ plants <- readRDS(here("data/clean_data/heathland-fire-plants.RDS"))
 
 plants <- transform_sample_counts(plants, function(x) x / sum(x)) # compute relative abundances
 
-dis <- vegdist(x = plants@otu_table, method = "bray") # compute dissimilarity index
+mat <- decostand(plants@otu_table, method = "hellinger")
+dis <- vegdist(x = mat, method = "bray") # compute dissimilarity index
 
 ordmod <- cmdscale(
   d = dis,
@@ -38,8 +40,7 @@ plot1 <- ordiplot(ordmod, choices = c(1, 2))
 
 sites.long1 <- sites.long(plot1, env.data = plants@sam_data)
 
-ev <- ordmod$eig # get eigenvalues
-percent_explained <- 100 * ev / sum(ev) # store eigenvalues
+percent_explained <- 100 * ordmod$eig / sum(ordmod$eig) # store eigenvalues
 percent_explained[1:2] # gives the percent explained for the first two axis
 
 plot1 <- ordiplot(ordmod, choices = c(1, 2))
@@ -209,7 +210,8 @@ pitrar <- rarefy_even_depth(pit,
 
 pitrar <- transform_sample_counts(pitrar, function(x) x / sum(x)) # compute relative abundances
 
-dis <- vegdist(x = pitrar@otu_table, method = "bray") # compute dissimilarity index
+mat <- decostand(pitrar@otu_table, method = "hellinger")
+dis <- vegdist(x = mat, method = "bray") # compute dissimilarity index
 
 ordmod <- cmdscale(
   d = dis,
@@ -309,10 +311,10 @@ nemrar <- rarefy_even_depth(nematodes,
 
 nemrar <- transform_sample_counts(nemrar, function(x) x / sum(x))
 
-dis <- vegdist(
-  x = nemrar@otu_table,
-  method = "bray"
-)
+mat <- decostand(nemrar@otu_table, method = "hellinger")
+dis <- vegdist(x = nemrar@otu_table, method = "bray") # compute dissimilarity index
+
+
 ordmod <- cmdscale(
   d = dis,
   k = 2,
