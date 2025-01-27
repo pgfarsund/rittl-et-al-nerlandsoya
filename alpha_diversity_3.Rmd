@@ -54,6 +54,7 @@ get_alpha_stats <- function(ps){
 define function to write glht results to table
 
 ```{r}
+# credit where it is due: https://gist.github.com/ajpelu/194e721077ec045a2b864088908e7aca
 table_glht <- function(x) {
   pq <- summary(x)$test
   mtests <- cbind(pq$coefficients, pq$sigma, pq$tstat, pq$pvalues)
@@ -82,10 +83,10 @@ data.frame(
   ),
   data.frame(plants@sam_data)
 ) |> 
-  mutate(effdiv = exp(Shannon)) -> df
+  mutate(ENS = exp(Shannon)) -> df
 
 ### model effective number of species
-plantmod <- lmerTest::lmer(effdiv ~ phase + (1|blokk), data = df)
+plantmod <- lmerTest::lmer(ENS ~ phase + (1|blokk), data = df)
 summary(plantmod)
 
 simulateResiduals(plantmod, plot = TRUE) # looks good
@@ -106,14 +107,14 @@ testDispersion(plantmod) # looks good
 (df |>
   ggplot(aes(
     x = factor(phase, levels = c("P", "B", "M")),
-    y = effdiv,
+    y = ENS,
     fill = factor(phase, levels = c("P", "B", "M")),
     color = factor(phase, levels = c("P", "B", "M"))
   )) +
-  theme_classic(base_size = 12) +
-  geom_boxplot(linewidth = 0.6, alpha = 0.5, outlier.shape = NA, width = 0.5) +
+  theme_classic(base_size = 17) +
+  geom_boxplot(linewidth = 0.6, alpha = 0.75, outlier.shape = NA, width = 0.5) +
   geom_jitter(
-    size = 3, shape = 21, stroke = 1, alpha = 0.8,
+    size = 2, shape = 21, stroke = 1, alpha = 0.8,
     position = position_jitter(height = 0, width = 0.3)
   ) +
   theme(
@@ -122,7 +123,7 @@ testDispersion(plantmod) # looks good
     ) +
   scale_fill_brewer(palette = "Greens") +
   scale_color_manual(values = rep("black", times = length(unique(plants@sam_data$phase)))) +
-  ylab("Effective number of species") +
+  ylab(" ") +
   ggtitle("Plants") +
   geom_segment(
     x = 1, xend = 2,
@@ -130,7 +131,7 @@ testDispersion(plantmod) # looks good
   ) +
   annotate(
     geom = "text", label = ".", size = 12,
-    x = 1.5, y = 20
+    x = 1.5, y = 21
   ) -> plantplot)
 
 ```
@@ -156,21 +157,21 @@ alpha_stats_malaise <- get_alpha_stats(malrar) |>
 # test whether differences in alpha diversity are significant between phases:
 data.frame(
   estimate_richness(malrar,
-    measures = c("Observed", "Shannon")
+    measures = c("Shannon")
   ),
   data.frame(malrar@sam_data)
 ) |> 
-  rename(Richness = Observed) -> df
+  mutate(ENS = exp(Shannon)) -> df
 
 # make boxplots
 (df |>
   ggplot(aes(
     x = factor(phase, levels = c("P", "B", "M")),
-    y = Richness,
+    y = ENS,
     fill = factor(phase, levels = c("P", "B", "M")),
     color = factor(phase, levels = c("P", "B", "M"))
   )) +
-  theme_classic() +
+  theme_classic(base_size = 17) +
   geom_point(size = 3, shape = 21, stroke = 1, alpha = 0.8) +
   theme(
     legend.position = "none",
@@ -207,11 +208,11 @@ alpha_stats_pitfall <- get_alpha_stats(pitrar) |>
   ),
   data.frame(pitrar@sam_data)
 ) |> 
-  mutate(effdiv = exp(Shannon), 
+  mutate(ENS = exp(Shannon), 
          sub_blokk = paste0(blokk, "_", sub_block)) -> df)
 
 ### model effective number of species
-pitmod <- lmerTest::lmer(effdiv ~ phase + (1|blokk) + (1|sub_block), data = df)
+pitmod <- lmerTest::lmer(ENS ~ phase + (1|blokk) + (1|sub_block), data = df)
 summary(pitmod)
 
 simulateResiduals(pitmod, plot = TRUE) # looks good
@@ -232,14 +233,14 @@ testDispersion(pitmod) # looks good
 (df |>
   ggplot(aes(
     x = factor(phase, levels = c("P", "B", "M")),
-    y = effdiv,
+    y = ENS,
     fill = factor(phase, levels = c("P", "B", "M")),
     color = factor(phase, levels = c("P", "B", "M"))
   )) +
-  theme_classic() +
-  geom_boxplot(linewidth = 0.6, alpha = 0.5, outlier.shape = NA, width = 0.5) +
+  theme_classic(base_size = 17) +
+  geom_boxplot(linewidth = 0.6, alpha = 0.75, outlier.shape = NA, width = 0.5) +
   geom_jitter(
-    size = 3, shape = 21, stroke = 1, alpha = 0.8,
+    size = 2, shape = 21, stroke = 1, alpha = 0.8,
     position = position_jitter(height = 0, width = 0.3)
   ) +
   theme(
@@ -279,10 +280,10 @@ alpha_stats_nematodes <- get_alpha_stats(nemrar) |>
 ) |> 
   rename(Richness = Observed) |> 
   mutate(blokk = sapply(strsplit(Navn, split = '_', fixed = TRUE), `[`, 1), 
-         effdiv = exp(Shannon)) -> df)
+         ENS = exp(Shannon)) -> df)
 
 ### model effective number of species
-nemmod <- lmerTest::lmer(effdiv ~ phase + (1|blokk) + (1|month), data = df)
+nemmod <- lmerTest::lmer(ENS ~ phase + (1|blokk) + (1|month), data = df)
 summary(nemmod)
 
 simulateResiduals(nemmod, plot = TRUE) # looks good
@@ -308,14 +309,14 @@ testDispersion(nemmod) # looks good
   ) |>
   ggplot(aes(
     x = factor(phase, levels = c("P", "B", "M")),
-    y = effdiv,
+    y = ENS,
     fill = factor(phase, levels = c("P", "B", "M")),
     color = factor(phase, levels = c("P", "B", "M"))
   )) +
-  theme_classic(base_size = 12) +
-  geom_boxplot(linewidth = 0.6, alpha = 0.5, outlier.shape = NA, width = 0.5) +
+  theme_classic(base_size = 17) +
+  geom_boxplot(linewidth = 0.6, alpha = 0.75, outlier.shape = NA, width = 0.5) +
   geom_jitter(
-    size = 3, shape = 21, stroke = 1, alpha = 0.8,
+    size = 2, shape = 21, stroke = 1, alpha = 0.8,
     position = position_jitter(height = 0, width = 0.3)
   ) +
   theme(
@@ -382,23 +383,20 @@ data.frame(
 ) |> 
   rename(Richness = Observed) |>
   mutate(blokk = sapply(strsplit(Navn, split = '_', fixed = TRUE), `[`, 1), 
-         effdiv = exp(Shannon)) -> df
+         ENS = exp(Shannon)) -> df
 
 ### model effective number of species
-funmod <- lmerTest::lmer(effdiv ~ phase + (1|blokk) + (1|month), data = df)
+funmod <- lmerTest::lmer(ENS ~ phase + (1|blokk) + (1|month), data = df)
 summary(funmod)
 isSingular(funmod)
 
-# the fungal model is a singular fit. this could symptom of our random effects having few levels or that the model is simply overfitted. from the output of summary(mod) we see that "month" explains no variance in the data. to get past this issue, we fit a Bayesian LMM with package blme and apply 
-
-#apply a Gamma prior as recommended in Chung et al. 2013 (https://doi.org/10.1007/s11336-013-9328-2) and proposed by the authors of lme4 through help(isSingular)
+# the fungal model is a singular fit. this could symptom of our random effects having few levels or that the model is simply overfitted. from the output of summary(mod) we see that "month" explains no variance in the data. to get past this issue, we fit a Bayesian LMM with package blme and apply a Gamma prior as recommended in Chung et al. 2013 (https://doi.org/10.1007/s11336-013-9328-2). 
 
 library(blme)
 
-funmodblme <- blme::blmer(effdiv ~ phase + (1|blokk) + (1|month), data = df, 
-                          cov.prior = "gamma(5, 2.5)")
+funmodblme <- blme::blmer(ENS ~ phase + (1|blokk) + (1|month), data = df, 
+                          cov.prior = gamma(2.5, 1))
 summary(funmodblme)
-
 simulateResiduals(funmodblme, plot = TRUE) # looks good
 #testDispersion(funmodblme) # not supported
 
@@ -421,14 +419,14 @@ simulateResiduals(funmodblme, plot = TRUE) # looks good
   ) |>
   ggplot(aes(
     x = factor(phase, levels = c("P", "B", "M")),
-    y = effdiv,
+    y = ENS,
     fill = factor(phase, levels = c("P", "B", "M")),
     color = factor(phase, levels = c("P", "B", "M"))
   )) +
-  theme_classic() +
-  geom_boxplot(linewidth = 0.6, alpha = 0.5, outlier.shape = NA, width = 0.5) +
+  theme_classic(base_size = 17) +
+  geom_boxplot(linewidth = 0.6, alpha = 0.75, outlier.shape = NA, width = 0.5) +
   geom_jitter(
-    size = 3, shape = 21, stroke = 1, alpha = 0.8,
+    size = 2, shape = 21, stroke = 1, alpha = 0.8,
     position = position_jitter(height = 0, width = 0.3)
   ) +
   theme(
@@ -467,10 +465,10 @@ data.frame(
 ) |> 
   rename(Richness = Observed) |> 
   mutate(blokk = sapply(strsplit(Navn, split = '_', fixed = TRUE), `[`, 1), 
-         effdiv = exp(Shannon)) -> df
+         ENS = exp(Shannon)) -> df
 
 ### model effective number of species
-bacmod <- lmerTest::lmer(effdiv ~ phase + (1|blokk) + (1|month), data = df)
+bacmod <- lmerTest::lmer(ENS ~ phase + (1|blokk) + (1|month), data = df)
 summary(bacmod)
 
 simulateResiduals(bacmod, plot = TRUE) # looks good
@@ -495,14 +493,14 @@ testDispersion(bacmod) # looks good
   ) |>
   ggplot(aes(
     x = factor(phase, levels = c("P", "B", "M")),
-    y = effdiv,
+    y = ENS,
     fill = factor(phase, levels = c("P", "B", "M")),
     color = factor(phase, levels = c("P", "B", "M"))
   )) +
-  theme_classic() +
-  geom_boxplot(linewidth = 0.6, alpha = 0.5, outlier.shape = NA, width = 0.5) +
+  theme_classic(base_size = 17) +
+  geom_boxplot(linewidth = 0.6, alpha = 0.75, outlier.shape = NA, width = 0.5) +
   geom_jitter(
-    size = 3, shape = 21, stroke = 1, alpha = 0.8,
+    size = 2, shape = 21, stroke = 1, alpha = 0.8,
     position = position_jitter(height = 0, width = 0.3)
   ) +
   theme(
@@ -515,13 +513,62 @@ testDispersion(bacmod) # looks good
 
 ```
 
+get diversity stats
 
 ```{r}
-ggarrange(plantplot, inrich, pitrich, nemrich, funrich, bacrich, nrow = 2, ncol = 3)
+# make a data frame from all ENS stats
+(rbind(
+  alpha_stats_plants, 
+  alpha_stats_malaise, 
+  alpha_stats_pitfall, 
+  alpha_stats_nematodes, 
+  alpha_stats_fungi, 
+  alpha_stats_bacteria
+) -> ens)
+```
+
+print LMM outputs
+
+```{r}
+rbind(
+  data.frame(Group = "Plants", 
+             broom.mixed::tidy(plantmod)),
+  data.frame(Group = "Pitfall traps", 
+             broom.mixed::tidy(pitmod)),
+  data.frame(Group = "Nematodes", 
+             broom.mixed::tidy(nemmod)),
+  data.frame(Group = "Fungi", 
+             broom.mixed::tidy(funmod)),
+  data.frame(Group = "Bacteria", 
+             broom.mixed::tidy(bacmod))
+) |> 
+  rename("random_effect" = group) -> lmm.output
+writexl::write_xlsx(lmm.output, "~/Desktop/lmmoutput.xlsx")
+```
+
+print pairwise comparisons
+
+```{r}
+rbind(
+  plantpair, 
+  pitpair, 
+  nempair, 
+  funpair, 
+  bacpair
+) -> lmm.pairwise 
+writexl::write_xlsx(lmm.pairwise, "~/Desktop/pairwise.xlsx")
 ```
 
 
+combine boxplots 
 
-
+```{r}
+fig <- ggarrange(plantplot, inrich, pitrich, 
+                 nemrich, funrich, bacrich, nrow = 2, ncol = 3) # pdf 3 x 11.69
+fig <- annotate_figure(fig,
+                bottom = text_grob("Successional phase", color = "black", size = 16),
+                left = text_grob("Effective number of species", color = "black", rot = 90, size = 16))
+fig
+```
 
 

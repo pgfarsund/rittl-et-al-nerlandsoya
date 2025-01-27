@@ -22,19 +22,15 @@ library(broom)
 set.seed(123)
 ```
 
-
-plants
+define function to get alpha diversity stats
 
 ```{r}
-# load phyloseq object:
-plants <- readRDS(here("data/clean_data/heathland-fire-plants.RDS"))
-
-# calculate alpha diversity measures and find medians and IQR:
-(tibble(
-  estimate_richness(plants,
+get_alpha_stats <- function(ps){
+  tibble(
+  estimate_richness(ps,
     measures = c("Observed", "Shannon")
   ),
-  data.frame(plants@sam_data)
+  data.frame(ps@sam_data)
 ) |>
   select(Observed, Shannon, phase) |>
   group_by(phase) |>
@@ -52,10 +48,20 @@ plants <- readRDS(here("data/clean_data/heathland-fire-plants.RDS"))
   ) |>
   select(group, phase, richness, shannon, N) |>
   distinct() |>
-  arrange(phase = factor(
-    phase,
-    levels = c("P", "B", "M")
-  )) -> alpha_stats_plants)
+  arrange(phase = factor(phase, levels = c("P", "B", "M")))
+}
+
+```
+
+
+plants
+
+```{r}
+# load phyloseq object:
+plants <- readRDS(here("data/clean_data/heathland-fire-plants.RDS"))
+
+# calculate alpha diversity measures and find medians and IQR:
+get_alpha_stats(plants)
 
 # test whether differences in alpha diversity are significant between phases:
 tibble(

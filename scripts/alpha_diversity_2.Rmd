@@ -53,6 +53,21 @@ get_alpha_stats <- function(ps){
 
 ```
 
+define function to write glht results to table
+
+```{r}
+table_glht <- function(x) {
+  pq <- summary(x)$test
+  mtests <- cbind(pq$coefficients, pq$sigma, pq$tstat, pq$pvalues)
+  error <- attr(pq$pvalues, "error")
+  pname <- switch(x$alternativ, less = paste("Pr(<", ifelse(x$df ==0, "z", "t"), ")", sep = ""), 
+  greater = paste("Pr(>", ifelse(x$df == 0, "z", "t"), ")", sep = ""), two.sided = paste("Pr(>|",ifelse(x$df == 0, "z", "t"), "|)", sep = ""))
+  colnames(mtests) <- c("Estimate", "Std. Error", ifelse(x$df ==0, "z value", "t value"), pname)
+  return(mtests)
+}
+```
+
+
 plants
 
 ```{r}
@@ -673,10 +688,11 @@ alpha_stats_bacteria <- get_alpha_stats(bacrar) |>
 # test whether differences in alpha diversity are significant between phases:
 data.frame(
   estimate_richness(bacrar,
-    measures = c("Richness", "Shannon")
+    measures = c("Observed", "Shannon")
   ),
   data.frame(bacrar@sam_data)
 ) |> 
+  rename(Richness = Observed) |> 
   mutate(blokk = sapply(strsplit(Navn, split = '_', fixed = TRUE), `[`, 1)) -> df
 
 ### RICHNESS
