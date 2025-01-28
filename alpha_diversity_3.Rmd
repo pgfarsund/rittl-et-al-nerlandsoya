@@ -15,10 +15,10 @@ library(ggpubr)
 library(janitor)
 library(emmeans)
 library(broom)
-library(glmmTMB)
 library(DHARMa)
 library(performance)
-library(sjPlot)
+library(multcomp)
+library(lmerTest)
 
 set.seed(123)
 ```
@@ -209,10 +209,10 @@ alpha_stats_pitfall <- get_alpha_stats(pitrar) |>
   data.frame(pitrar@sam_data)
 ) |> 
   mutate(ENS = exp(Shannon), 
-         sub_blokk = paste0(blokk, "_", sub_block)) -> df)
+         sub_blokk = paste0(blokk, "_", subunit)) -> df)
 
 ### model effective number of species
-pitmod <- lmerTest::lmer(ENS ~ phase + (1|blokk) + (1|sub_block), data = df)
+pitmod <- lmerTest::lmer(ENS ~ phase + (1|blokk) + (1|subunit), data = df)
 summary(pitmod)
 
 simulateResiduals(pitmod, plot = TRUE) # looks good
@@ -351,7 +351,7 @@ testDispersion(nemmod) # looks good
     geom = "text", label = "**", size = 10,
     x = 1.5, y = 12.1
   ) +
-  coord_cartesian(ylim = c(2.5, 13))  -> nemrich)
+  coord_cartesian(ylim = c(2, 15))  -> nemrich)
 
 
 ```
@@ -513,7 +513,7 @@ testDispersion(bacmod) # looks good
 
 ```
 
-get diversity stats
+get diversity stats for Supplementary table S1
 
 ```{r}
 # make a data frame from all ENS stats
@@ -527,7 +527,7 @@ get diversity stats
 ) -> ens)
 ```
 
-print LMM outputs
+print LMM outputs for Supplementary table S2
 
 ```{r}
 rbind(
@@ -546,7 +546,7 @@ rbind(
 writexl::write_xlsx(lmm.output, "~/Desktop/lmmoutput.xlsx")
 ```
 
-print pairwise comparisons
+print pairwise comparisons for Supplementary table S3
 
 ```{r}
 rbind(
@@ -559,8 +559,7 @@ rbind(
 writexl::write_xlsx(lmm.pairwise, "~/Desktop/pairwise.xlsx")
 ```
 
-
-combine boxplots 
+combine boxplots into Figure 5
 
 ```{r}
 fig <- ggarrange(plantplot, inrich, pitrich, 
@@ -568,7 +567,7 @@ fig <- ggarrange(plantplot, inrich, pitrich,
 fig <- annotate_figure(fig,
                 bottom = text_grob("Successional phase", color = "black", size = 16),
                 left = text_grob("Effective number of species", color = "black", rot = 90, size = 16))
-fig
+fig # 1200 x 670
 ```
 
 

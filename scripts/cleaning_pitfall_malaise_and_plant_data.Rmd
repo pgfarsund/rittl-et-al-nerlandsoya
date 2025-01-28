@@ -323,14 +323,14 @@ cleaning pitfall traps
   distinct() |>
   pivot_wider(names_from = group, 
               values_from = abundance) |> 
-  separate(Cup, into = c("phase", "blokk", "sub_block"), sep = "_") %>%
+  separate(Cup, into = c("phase", "blokk", "subunit"), sep = "_") %>%
   mutate(sample = paste0("sa", 1:nrow(.)), .before = 1) |> 
   column_to_rownames("sample"))
 
 # prepare sample data
 (sam <- pit |> 
   clean_names() |> 
-  select(phase, blokk, sub_block) |> 
+  select(phase, blokk, subunit) |> 
   mutate(phase = sub("Pioner", "P", phase), 
          phase = sub("Bygg", "B", phase), 
          phase = sub("Moden", "M", phase), 
@@ -340,7 +340,7 @@ cleaning pitfall traps
 
 # construct a matrix equivalent to an otu table in a phyloseq object 
 (otu <- pit |> 
-  select(-c(phase, blokk, sub_block)))
+  select(-c(phase, blokk, subunit)))
 
 (otu <- otu_table(otu, taxa_are_rows = F))  
 
@@ -348,7 +348,7 @@ cleaning pitfall traps
 (tax <- data.frame(
   row.names = colnames(pit), 
   "Order" = colnames(pit)) |> 
-   filter(Order != c("phase", "blokk", "sub_block"))) 
+   filter(Order != c("phase", "blokk", "subunit"))) 
 
 tax <- tax_table(tax)
 colnames(tax) <- "Order"
