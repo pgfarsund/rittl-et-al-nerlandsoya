@@ -204,7 +204,7 @@ make Figure 3
 ```{r}
 ggarrange(plants_venn, malaise_venn, pit_venn, 
           nematodes_venn, fungi_venn, bacteria_venn, 
-          nrow = 2, ncol = 3) 
+          nrow = 2, ncol = 3) # 850 x 500 
 ```
 
 make Supplementary Figure 1
@@ -214,11 +214,3 @@ ggarrange(plants_relab_venn, malaise_relab_venn, pit_relab_venn,
           nrow = 2, ncol = 3) 
 ```
 
-make Supplementary Figure 
-```{r}
-# ordinations
-ggarrange(plabet, mabet, grobet,
-  nemabet, funbet, bacbet,
-  ncol = 3, nrow = 2
-)
-```
