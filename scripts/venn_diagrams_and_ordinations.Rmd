@@ -5,7 +5,7 @@ date: "`r Sys.Date()`"
 output: html_document
 ---
 
-this script performs calculations, statistical testing, and plotting for beta diversity analysis included in the paper. 
+this script Venn diagrams included in the paper. 
 
 load required packages
 ```{r}
@@ -204,7 +204,7 @@ make Figure 3
 ```{r}
 ggarrange(plants_venn, malaise_venn, pit_venn, 
           nematodes_venn, fungi_venn, bacteria_venn, 
-          nrow = 2, ncol = 3) # 850 x 500 
+          nrow = 2, ncol = 3) # 850 x 500 / 6 x 8 pdf
 ```
 
 make Supplementary Figure 1

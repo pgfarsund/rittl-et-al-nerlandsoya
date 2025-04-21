@@ -209,10 +209,10 @@ alpha_stats_pitfall <- get_alpha_stats(pitrar) |>
   data.frame(pitrar@sam_data)
 ) |> 
   mutate(ENS = exp(Shannon), 
-         sub_blokk = paste0(blokk, "_", subunit)) -> df)
+         sub_blokk = paste0(blokk, "_", sub_block)) -> df)
 
 ### model effective number of species
-pitmod <- lmerTest::lmer(ENS ~ phase + (1|blokk) + (1|subunit), data = df)
+pitmod <- lmerTest::lmer(ENS ~ phase + (1|blokk) + (1|sub_block), data = df)
 summary(pitmod)
 
 simulateResiduals(pitmod, plot = TRUE) # looks good
@@ -530,7 +530,7 @@ get diversity stats for Supplementary table S1
 print LMM outputs for Supplementary table S2
 
 ```{r}
-rbind(
+(rbind(
   data.frame(Group = "Plants", 
              broom.mixed::tidy(plantmod)),
   data.frame(Group = "Pitfall traps", 
@@ -542,21 +542,21 @@ rbind(
   data.frame(Group = "Bacteria", 
              broom.mixed::tidy(bacmod))
 ) |> 
-  rename("random_effect" = group) -> lmm.output
-writexl::write_xlsx(lmm.output, "~/Desktop/lmmoutput.xlsx")
+  rename("random_effect" = group) -> lmm.output)
+
 ```
 
 print pairwise comparisons for Supplementary table S3
 
 ```{r}
-rbind(
+(rbind(
   plantpair, 
   pitpair, 
   nempair, 
   funpair, 
   bacpair
-) -> lmm.pairwise 
-writexl::write_xlsx(lmm.pairwise, "~/Desktop/pairwise.xlsx")
+) -> lmm.pairwise) 
+
 ```
 
 combine boxplots into Figure 5
@@ -567,7 +567,7 @@ fig <- ggarrange(plantplot, inrich, pitrich,
 fig <- annotate_figure(fig,
                 bottom = text_grob("Successional phase", color = "black", size = 16),
                 left = text_grob("Effective number of species", color = "black", rot = 90, size = 16))
-fig # 1200 x 670
+fig # 1200 x 670 / 7 x 12 pdf
 ```
 
 

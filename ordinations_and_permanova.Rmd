@@ -14,6 +14,7 @@ library(BiodiversityR)
 library(ggforce)
 library(phyloseq)
 library(ggpubr)
+library(pairwiseAdonis)
 
 set.seed(123)
 ```
@@ -89,7 +90,7 @@ adonis2(decostand(plants@otu_table, method = "hellinger") ~ phase,
 ) -> plantperm
 
 # perform pairwise permanova
-pairwise.adonis2(mat ~ phase,
+pairwise.adonis2(decostand(plants@otu_table, method = "hellinger") ~ phase,
   data = data.frame(plants@sam_data),
   nperm = 9999,
   method = "bray"
@@ -100,6 +101,7 @@ pairwise.adonis2(mat ~ phase,
 malaise traps
 
 ```{r}
+set.seed(123)
 malaise <- readRDS(here("data/clean_data/heathland-fire-malaise.RDS"))
 malaise <- prune_taxa(taxa_sums(malaise) > 0, malaise)
 
@@ -143,17 +145,17 @@ sites.long <- sites.long(ordiplot(ordmod, choices = c(1, 2)),
 get_ordination_plot(ps = pitrar, ordidata = sites.long, 
                     cols = c("tan", "tan3", "tan4"), tit = "Pitfall traps") -> pitord
 
-adonis2(decostand(pitrar@otu_table, method = "hellinger") ~ phase,
+(adonis2(decostand(pitrar@otu_table, method = "hellinger") ~ phase,
   data = data.frame(pitrar@sam_data),
   permutations = 9999,
   method = "bray"
-) -> pitperm
+) -> pitperm)
 
-pairwise.adonis2(decostand(pitrar@otu_table, method = "hellinger") ~ phase,
+(pairwise.adonis2(decostand(pitrar@otu_table, method = "hellinger") ~ phase,
   data = data.frame(pitrar@sam_data),
   nperm = 9999,
   method = "bray"
-) -> pitpairperm
+) -> pitpairperm)
 ```
 
 nematodes
@@ -195,6 +197,7 @@ pairwise.adonis2(decostand(nemrar@otu_table, method = "hellinger") ~ phase,
 fungi
 
 ```{r}
+set.seed(123)
 # load and normalise phyloseq object:
 fungi <- readRDS(here("data/clean_data/heathland-fire-fungi.RDS"))
 
@@ -229,6 +232,7 @@ pairwise.adonis2(decostand(funrar@otu_table, method = "hellinger") ~ phase,
 bacteria
 
 ```{r}
+set.seed(123)
 # load and normalise phyloseq object:
 bacteria <- readRDS(here("data/clean_data/heathland-fire-bacteria.RDS"))
 
@@ -285,7 +289,7 @@ rbind(
 ) |>
   rownames_to_column(var = "mod_resid") |> 
   relocate(mod_resid, .after = 2) -> permanova.output
-writexl::write_xlsx(permanova.output, "~/Desktop/perm.xlsx")
+
 ```
 
 combine pairwise permanova into Supplementary table 5
@@ -338,6 +342,6 @@ rbind(data.frame(group = "Plants",
                  bacparperm$M_vs_P)) |>
   rownames_to_column(var = "mod_resid") |> 
   relocate(mod_resid, .after = 2) -> pairpermanova.output
-writexl::write_xlsx(pairpermanova.output, "~/Desktop/pairperm.xlsx")
+
 ```
 
